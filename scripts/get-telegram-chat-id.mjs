@@ -8,7 +8,7 @@ for (let index = 2; index < process.argv.length; index += 2) {
 const botToken = args.get("--bot-token") || process.env.TELEGRAM_BOT_TOKEN;
 
 if (!botToken) {
-  console.error("Usage: npm run telegram:chat-id -- --bot-token <token>");
+  console.error("Uso: npm run telegram:chat-id -- --bot-token <token>");
   process.exit(1);
 }
 
@@ -28,13 +28,13 @@ for (const update of response.result || []) {
   chats.set(String(chat.id), {
     id: chat.id,
     type: chat.type,
-    title: chat.title || [chat.first_name, chat.last_name].filter(Boolean).join(" ") || chat.username || "Unknown chat",
+    title: chat.title || [chat.first_name, chat.last_name].filter(Boolean).join(" ") || chat.username || "Chat sem nome",
     lastMessage: message.text || ""
   });
 }
 
 if (chats.size === 0) {
-  console.log("No chat updates yet. Send any message to your bot in Telegram, then run this again.");
+  console.log("Nenhuma mensagem ainda. Mande qualquer mensagem para o seu bot no Telegram e rode este comando de novo.");
   process.exit(0);
 }
 

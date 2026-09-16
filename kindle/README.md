@@ -1,172 +1,191 @@
-# Kindle Native Dashboard Setup
+# Painel Kindle: Lado Do Kindle
 
-The preferred Kindle surface is now a native C++ app launched by KUAL or upstart. It fetches read-only JSON from:
+O painel é um programa nativo em C++ iniciado pelo KUAL ou pelo upstart. Ele
+busca um JSON somente leitura em:
 
 ```text
-https://your-project.insforge.app/functions/kindle-dashboard-data
+https://seu-projeto.insforge.app/functions/kindle-dashboard-data
 ```
 
-The deployed dashboard endpoints require `DASHBOARD_READ_TOKEN`; the native
-launcher sends it as `X-Dashboard-Read-Token` from local `config.sh`.
+As URLs publicadas exigem o `DASHBOARD_READ_TOKEN`. O inicializador o envia
+no cabeçalho `X-Dashboard-Read-Token`, lendo do `config.sh` local.
 
-## Preview Without A Kindle
+## Prévia Sem Kindle
 
-Render the bundled sample payload to an image:
+Desenhe os dados de exemplo numa imagem:
 
 ```sh
 make -C kindle/native local
-kindle/native/build/kindle-dashboard-local --render kindle/native/fixtures/dashboard-data.json --save-pgm /tmp/dashboard.pgm
-magick /tmp/dashboard.pgm /tmp/dashboard.png
+kindle/native/build/kindle-dashboard-local --render kindle/native/fixtures/dashboard-data.json --save-pgm /tmp/painel.pgm
+magick /tmp/painel.pgm /tmp/painel.png
 ```
 
-Add `--dark`, `--view chores` (or `grocery`), or `--title "Any text"` to try the other looks.
+Acrescente `--dark`, `--view chores` (ou `grocery`) ou `--title "Qualquer texto"`
+para ver as outras variações.
 
-## Build
+## Compilação
 
-Run a local parser/render check on your computer:
+Rode a verificação local no seu computador:
 
 ```sh
 npm run native:check
 ```
 
-Build a Kindle binary after installing an ARM Kindle-compatible toolchain:
+Compile o programa para o Kindle depois de instalar um compilador ARM
+compatível:
 
 ```sh
 make -C kindle/native kindle
 ```
 
-The Makefile expects `arm-linux-gnueabi-g++`. If your compiler has another name, pass it explicitly:
+O Makefile espera `arm-linux-gnueabi-g++`. Se o seu compilador tiver outro
+nome, passe explicitamente:
 
 ```sh
-make -C kindle/native kindle KINDLE_CXX=/path/to/arm-linux-gnueabi-g++
+make -C kindle/native kindle KINDLE_CXX=/caminho/para/arm-linux-gnueabi-g++
 ```
 
-If you don't have that GNU cross compiler, a Zig soft-float ARM build is the easier path (`ZIG=` is only needed when `zig` is not on your `PATH`):
+Se você não tem esse compilador GNU, o caminho mais fácil é a compilação ARM
+soft-float com Zig (`ZIG=` só é necessário quando o `zig` não está no seu
+`PATH`):
 
 ```sh
-make -C kindle/native extension-zig ZIG=/path/to/zig
+make -C kindle/native extension-zig ZIG=/caminho/para/zig
 ```
 
-Use `extension-zig` for a broadly compatible ARM EABI build. Override `ZIG_TARGET=arm-linux-gnueabihf ZIG_MCPU=generic+v7a` only if your device specifically needs a hard-float build.
+Use o `extension-zig` para uma compilação ARM EABI amplamente compatível. Só
+use `ZIG_TARGET=arm-linux-gnueabihf ZIG_MCPU=generic+v7a` se o seu aparelho
+precisar especificamente de hard-float.
 
-## KUAL Install
+## Instalação No KUAL
 
-Build the KUAL extension package:
+Gere o pacote da extensão do KUAL:
 
 ```sh
 make -C kindle/native extension
 ```
 
-Or, with the Zig soft-float path:
+Ou, pelo caminho com Zig:
 
 ```sh
-make -C kindle/native extension-zig ZIG=/path/to/zig
+make -C kindle/native extension-zig
 ```
 
-Copy `kindle/native/build/kindle-dashboard-kual.tar.gz` to the Kindle and extract it into the KUAL extensions directory:
+Extraia `kindle/native/build/kindle-dashboard-kual.tar.gz` na pasta
+`extensions/` do Kindle (conectado por USB):
 
 ```sh
-tar -C /mnt/us/extensions -xzf kindle-dashboard-kual.tar.gz
+tar -C /caminho/para/Kindle/extensions -xzf kindle/native/build/kindle-dashboard-kual.tar.gz
 ```
 
-If the Kindle is mounted over USB, install directly with (the mount path defaults to `/Volumes/Kindle`, so pass it explicitly on Linux):
+Ou instale direto com o script. O caminho padrão é `/Volumes/Kindle` (macOS),
+então passe o caminho explicitamente no Linux:
 
 ```sh
-DASHBOARD_DATA_URL=https://your-project.insforge.app/functions/kindle-dashboard-data DASHBOARD_READ_TOKEN=<read-token> npm run native:install -- /path/to/Kindle
+DASHBOARD_DATA_URL=https://seu-projeto.insforge.app/functions/kindle-dashboard-data DASHBOARD_READ_TOKEN=<read-token> npm run native:install -- /caminho/para/Kindle
 ```
 
-See [docs/INSTALL_FOR_USERS.md](../docs/INSTALL_FOR_USERS.md) for the full list of variables it writes into `config.sh`.
+Veja o [docs/INSTALACAO.md](../docs/INSTALACAO.md) para a lista completa de
+variáveis que ele grava no `config.sh`.
 
-KUAL menu actions:
+Opções do menu do KUAL (em **Painel Kindle**):
 
-- `Start Dashboard (Light)`: starts the always-on e-ink dashboard.
-- `Start Dashboard (Dark)`: the same, rendered white-on-black.
-- `Refresh Once (Light)`: temporarily wakes the display, enables Wi-Fi, fetches, and renders one update.
-- `Refresh Once (Dark)`: the same, rendered white-on-black.
-- `Stop Dashboard`: kills the native process and restores normal sleep behavior.
+- `Iniciar painel (claro)`: inicia o painel e-ink sempre ligado.
+- `Iniciar painel (escuro)`: o mesmo, em branco sobre preto.
+- `Atualizar uma vez (claro)`: acorda a tela temporariamente, liga o Wi-Fi,
+  busca os dados e desenha uma atualização.
+- `Atualizar uma vez (escuro)`: o mesmo, em branco sobre preto.
+- `Parar painel`: encerra o programa e devolve o comportamento normal de
+  descanso.
 
-### Dark mode
+### Modo escuro
 
-The Dark entries pass `--dark`, which inverts the finished canvas: black
-background, white text and frames. It is the renderer's own theme, unrelated to
-the Kindle's OS-level dark mode, and it does not depend on the device setting.
+As opções "(escuro)" passam `--dark`, que inverte a tela pronta: fundo preto,
+texto e molduras brancos. É o tema do próprio programa, sem relação com o
+modo escuro do sistema do Kindle, e não depende dessa configuração do
+aparelho.
 
-To make it the default for every launch, set `DARK_MODE="1"` in `config.sh`.
-The Light/Dark menu entries override that setting for the launch they start.
-`INVERT_IMAGES` is the previous name for the same switch and still works, so a
-`config.sh` written before this release keeps whatever it was set to.
+Para usá-lo sempre, coloque `DARK_MODE="1"` no `config.sh`. As opções
+"(claro)"/"(escuro)" do menu têm prioridade na execução que iniciam.
+`INVERT_IMAGES` é o nome antigo da mesma opção e continua funcionando, então
+um `config.sh` escrito antes dessa versão mantém o que já estava configurado.
 
-The photo tile is pre-inverted before the canvas flip, so it stays a photo
-instead of coming out as a negative. Two things are worth knowing before
-leaving dark mode on permanently:
+A caixa de foto é invertida antes da inversão da tela, então continua sendo
+uma foto em vez de virar um negativo. Duas coisas a saber antes de deixar o
+modo escuro sempre ligado:
 
-- The Kindle's own status bar (the top 66 px) is drawn by the OS and is
-  deliberately not written to, so it stays light. Dark mode leaves a light
-  strip there.
-- A mostly-black screen ghosts more on e-ink than a mostly-white one. Full
-  refreshes stay readable, but faint remnants of the previous frame are more
-  visible between them.
+- A barra de status do próprio Kindle (os 66 px do topo) é desenhada pelo
+  sistema e o programa não escreve nela de propósito, então ela continua
+  clara. O modo escuro deixa uma faixa clara ali.
+- Uma tela quase toda preta deixa mais "fantasmas" no e-ink do que uma quase
+  toda branca. As atualizações completas continuam legíveis, mas restos
+  fracos da tela anterior ficam mais visíveis entre elas.
 
-The native app caches the latest successful payload at:
+O programa guarda os últimos dados recebidos com sucesso em:
 
 ```text
 /mnt/us/documents/kindle-dashboard-data.json
 ```
 
-If Wi-Fi is unavailable, it renders cached data with a `cached/offline` status line.
+Sem Wi-Fi, ele desenha os dados guardados, com `OFFLINE` na linha de status.
 
-Always-on defaults can be overridden before launching:
+Os padrões "sempre ligado" podem ser alterados no `config.sh`:
 
 ```sh
 INTERVAL=300
 DASHBOARD_SLEEP_WINDOW=off
 DASHBOARD_KEEP_AWAKE=1
 DARK_MODE=0
-DASHBOARD_TITLE="Kindle Dashboard"
+DASHBOARD_TITLE="Painel Kindle"
 ```
 
-Set `DASHBOARD_SLEEP_WINDOW=HH:MM-HH:MM` to add overnight quiet mode, or `DASHBOARD_KEEP_AWAKE=0` to allow normal Kindle sleep while the dashboard is running.
+Use `DASHBOARD_SLEEP_WINDOW=HH:MM-HH:MM` para pausar as atualizações à noite,
+ou `DASHBOARD_KEEP_AWAKE=0` para deixar o Kindle dormir normalmente enquanto o
+painel roda.
 
-## Manual Launcher
+## Inicializador Manual
 
-Copy the repo launcher onto the Kindle:
+Copie o inicializador do repositório para o Kindle:
 
 ```sh
 cp kindle/launch-dashboard.sh /mnt/us/documents/kindle-dashboard-launch.sh
 chmod +x /mnt/us/documents/kindle-dashboard-launch.sh
 ```
 
-Run it manually over SSH to test:
+Rode manualmente por SSH para testar:
 
 ```sh
 /mnt/us/documents/kindle-dashboard-launch.sh
 ```
 
-If the native binary is missing, the launcher exits and writes the failure to the native dashboard log.
+Se o programa não existir, o inicializador sai e registra a falha no log do
+painel.
 
-## Optional: Start On Boot
+## Opcional: Iniciar Junto Com O Kindle
 
-If SSH/root access is enabled and your Kindle uses upstart jobs, copy:
+Se você tem acesso SSH/root e o seu Kindle usa jobs do upstart, copie:
 
 ```text
 kindle/upstart/kindle-dashboard.conf
 ```
 
-to:
+para:
 
 ```text
 /etc/init/kindle-dashboard.conf
 ```
 
-Then adapt the command to run:
+Depois ajuste o comando para rodar:
 
 ```sh
 /mnt/us/documents/kindle-dashboard-launch.sh
 ```
 
-On the next boot, the job should wait for the Kindle UI, enable Wi-Fi, wait briefly for networking, then launch the native dashboard.
+Na próxima inicialização, o job espera a interface do Kindle, liga o Wi-Fi,
+espera um pouco pela rede e inicia o painel.
 
-If the Kindle hangs or behaves oddly, remove the upstart file:
+Se o Kindle travar ou se comportar de forma estranha, remova o arquivo do
+upstart:
 
 ```sh
 stop kindle-dashboard
@@ -175,10 +194,15 @@ rm /etc/init/kindle-dashboard.conf
 mntroot ro
 ```
 
-## Notes
+## Observações
 
-- KUAL support varies by Kindle model and firmware.
-- The native app needs Wi-Fi for fresh data but can render its cached payload offline.
-- The default native profile keeps the Kindle awake, refreshes every 300 seconds (plus live SSE pushes), and does not use an overnight quiet window.
-- Keeping Wi-Fi and a refresh process running will still use more battery than a static screensaver-style dashboard.
-- If boot autostart is too aggressive, launch the native dashboard manually from KUAL.
+- O suporte ao KUAL varia conforme o modelo e o firmware do Kindle.
+- O programa precisa de Wi-Fi para dados novos, mas desenha os dados
+  guardados quando está offline.
+- O perfil padrão mantém o Kindle acordado, atualiza a cada 300 segundos
+  (além dos avisos ao vivo por SSE) e não usa janela noturna.
+- Manter o Wi-Fi e o processo de atualização ligados gasta mais bateria do
+  que um painel estático no estilo protetor de tela.
+- Se iniciar junto com o Kindle for agressivo demais, inicie o painel
+  manualmente pelo KUAL.
+- Os logs do Kindle (`documents/kindle-dashboard-*.log`) ficam em inglês.

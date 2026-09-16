@@ -58,9 +58,9 @@ type DashboardPayload = {
 };
 
 const LIST_TITLES: Record<ListKey, string> = {
-  todo: "Chores",
-  grocery: "Grocery",
-  notes: "Notes"
+  todo: "Tarefas",
+  grocery: "Compras",
+  notes: "Notas"
 };
 const COMPLETED_ITEM_HIDE_AFTER_MS = 24 * 60 * 60 * 1000;
 const AGENDA_MAX_EVENTS = Number(Deno.env.get("AGENDA_MAX_EVENTS")) || 8;

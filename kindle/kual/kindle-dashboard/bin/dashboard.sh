@@ -15,7 +15,7 @@ SAVE_PGM="${SAVE_PGM:-/mnt/us/documents/kindle-dashboard-last-render.pgm}"
 INTERVAL="${INTERVAL:-300}"
 DASHBOARD_KEEP_AWAKE="${DASHBOARD_KEEP_AWAKE:-1}"
 DASHBOARD_SLEEP_WINDOW="${DASHBOARD_SLEEP_WINDOW:-off}"
-DASHBOARD_TITLE="${DASHBOARD_TITLE:-Kindle Dashboard}"
+DASHBOARD_TITLE="${DASHBOARD_TITLE:-Painel Kindle}"
 DASHBOARD_TIMEZONE="${DASHBOARD_TIMEZONE:-}"
 [ -n "$DASHBOARD_TIMEZONE" ] && export TZ="$DASHBOARD_TIMEZONE"
 # Dark mode. DARK_MODE is the current name; INVERT_IMAGES is what config.sh
@@ -83,12 +83,12 @@ start_dashboard() {
 
   if [ ! -x "$NATIVE_APP" ]; then
     log "missing native app: $NATIVE_APP"
-    say "Native app missing"
+    say "Programa do painel ausente"
     return 1
   fi
   if [ -z "$DASHBOARD_DATA_URL" ]; then
     log "missing DASHBOARD_DATA_URL; create /mnt/us/extensions/kindle-dashboard/config.sh"
-    say "Dashboard config missing"
+    say "Falta o config.sh do painel"
     return 1
   fi
 
@@ -96,7 +96,7 @@ start_dashboard() {
   chmod 755 "$RUN_APP" >> "$LOG" 2>&1
   if [ ! -x "$RUN_APP" ]; then
     log "native app copy not executable: $RUN_APP"
-    say "Native copy failed"
+    say "Falha ao copiar o programa"
     return 1
   fi
 
@@ -129,7 +129,7 @@ stop_dashboard() {
   log "stopping native dashboard"
   stop_existing_processes
   allow_sleep
-  say "Dashboard stopped"
+  say "Painel parado"
 }
 
 case "$1" in
@@ -142,13 +142,13 @@ case "$1" in
     stop_existing_processes
     if [ ! -x "$NATIVE_APP" ]; then
       log "missing native app: $NATIVE_APP"
-      say "Native app missing"
+      say "Programa do painel ausente"
       allow_sleep
       exit 1
     fi
     if [ -z "$DASHBOARD_DATA_URL" ]; then
       log "missing DASHBOARD_DATA_URL; create /mnt/us/extensions/kindle-dashboard/config.sh"
-      say "Dashboard config missing"
+      say "Falta o config.sh do painel"
       allow_sleep
       exit 1
     fi
@@ -163,7 +163,7 @@ case "$1" in
     stop_dashboard
     ;;
   *)
-    say "Unknown dashboard action"
+    say "Acao desconhecida"
     log "unknown action: $1"
     exit 1
     ;;

@@ -1,39 +1,39 @@
 {
   "items": [
     {
-      "name": "Kindle Dashboard",
+      "name": "Painel Kindle",
       "priority": 10,
       "items": [
         {
-          "name": "Start Dashboard (Light)",
+          "name": "Iniciar painel (claro)",
           "priority": 1,
           "action": "/bin/sh",
           "params": "/mnt/us/extensions/kindle-dashboard/bin/start-light.sh",
           "exitmenu": true
         },
         {
-          "name": "Start Dashboard (Dark)",
+          "name": "Iniciar painel (escuro)",
           "priority": 2,
           "action": "/bin/sh",
           "params": "/mnt/us/extensions/kindle-dashboard/bin/start-dark.sh",
           "exitmenu": true
         },
         {
-          "name": "Refresh Once (Light)",
+          "name": "Atualizar uma vez (claro)",
           "priority": 3,
           "action": "/bin/sh",
           "params": "/mnt/us/extensions/kindle-dashboard/bin/once-light.sh",
           "exitmenu": false
         },
         {
-          "name": "Refresh Once (Dark)",
+          "name": "Atualizar uma vez (escuro)",
           "priority": 4,
           "action": "/bin/sh",
           "params": "/mnt/us/extensions/kindle-dashboard/bin/once-dark.sh",
           "exitmenu": false
         },
         {
-          "name": "Stop Dashboard",
+          "name": "Parar painel",
           "priority": 5,
           "action": "/bin/sh",
           "params": "/mnt/us/extensions/kindle-dashboard/bin/stop.sh",

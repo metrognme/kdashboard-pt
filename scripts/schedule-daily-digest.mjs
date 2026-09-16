@@ -15,7 +15,7 @@ for (let index = 2; index < process.argv.length; index += 2) {
 
 const baseUrl = (args.get("--base-url") || process.env.INSFORGE_BASE_URL || "").replace(/\/+$/, "");
 if (!baseUrl) {
-  console.error("Usage: npm run digest:schedule -- --base-url https://your-project.region.insforge.app");
+  console.error("Uso: npm run digest:schedule -- --base-url https://seu-projeto.regiao.insforge.app");
   process.exit(1);
 }
 
@@ -28,20 +28,20 @@ ensureSecret("DAILY_DIGEST_TOKEN", randomSecret());
 const existing = findExistingSchedule();
 if (existing) {
   run(["schedules", "update", existing.id, "--cron", "0 * * * *", "--url", url, "--method", "POST", "--headers", headers]);
-  console.log(`Updated existing schedule (id ${existing.id}) to point at ${url}.`);
+  console.log(`Agendamento existente (id ${existing.id}) atualizado para ${url}.`);
 } else {
   run(["schedules", "create", "--name", SCHEDULE_NAME, "--cron", "0 * * * *", "--url", url, "--method", "POST", "--headers", headers]);
-  console.log(`Created hourly schedule targeting ${url}.`);
+  console.log(`Agendamento de hora em hora criado para ${url}.`);
 }
 
-console.log("It fires every hour; the function itself only acts during the configured digest hour (see /resumo_hora in the bot).");
+console.log("Ele dispara toda hora; a funcao so envia o resumo na hora configurada (veja /resumo_hora no bot).");
 
 function ensureSecret(key, value) {
   try {
     run(["secrets", "get", key, "--json"], { silent: true });
   } catch {
     run(["secrets", "add", key, value]);
-    console.log(`- added ${key}`);
+    console.log(`- ${key} criado`);
   }
 }
 

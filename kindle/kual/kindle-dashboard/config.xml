@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <extension>
   <information>
-    <name>Kindle Dashboard</name>
+    <name>Painel Kindle</name>
     <version>1.0</version>
-    <author>kindle-dashboard contributors</author>
+    <author>colaboradores do kindle-dashboard</author>
     <id>kindle-dashboard</id>
   </information>
   <menus>

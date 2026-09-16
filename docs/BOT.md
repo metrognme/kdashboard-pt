@@ -1,104 +1,108 @@
-# The Telegram Bot
+# O Bot Do Telegram
 
-Complete reference for `functions/telegram-webhook.ts`: who is allowed to use
-the bot, everything it understands, everything it can answer, and how to
-operate it.
+Referência completa do `functions/telegram-webhook.ts`: quem pode usar o bot,
+tudo o que ele entende, tudo o que ele pode responder e como operá-lo.
 
-For first-time setup see [INSTALL_FOR_USERS.md](INSTALL_FOR_USERS.md); this
-document assumes the bot is already connected.
+Para a primeira instalação, veja o [INSTALACAO.md](INSTALACAO.md). Este
+documento parte do princípio de que o bot já está conectado.
 
 ---
 
-## Who Can Use It
+## Quem Pode Usar
 
-**Only you.** A Telegram bot username is public and anybody can open a chat
-with it, but this one answers exactly one chat and ignores every other.
+**Só você.** O nome de usuário de um bot do Telegram é público e qualquer
+pessoa pode abrir uma conversa com ele, mas este responde a exatamente um
+chat e ignora todos os outros.
 
-Two independent gates, both in the first 25 lines of the handler:
+São duas barreiras independentes, ambas nas primeiras 25 linhas do handler:
 
-| Gate | Checks | Fails with |
+| Barreira | Verifica | Se falhar |
 | --- | --- | --- |
-| Webhook secret | `x-telegram-bot-api-secret-token` equals `TELEGRAM_WEBHOOK_SECRET` | `401 Unauthorized` |
-| Chat allowlist | `message.chat.id` (or `callback_query.message.chat.id`) equals `TELEGRAM_ALLOWED_CHAT_ID` | `200 {ok:true, ignored:true, reason:"chat_not_allowed"}` |
+| Segredo do webhook | `x-telegram-bot-api-secret-token` é igual a `TELEGRAM_WEBHOOK_SECRET` | `401 Unauthorized` |
+| Chat autorizado | `message.chat.id` (ou `callback_query.message.chat.id`) é igual a `TELEGRAM_ALLOWED_CHAT_ID` | `200 {ok:true, ignored:true, reason:"chat_not_allowed"}` |
 
-The secret gate stops anyone who found your function URL from injecting fake
-updates — only Telegram knows the secret, because you registered it with
-`setWebhook`. The allowlist gate stops anyone who found your bot's `@name`.
+As duas barreiras protegem contra coisas diferentes:
 
-What a stranger experiences: they send a message, Telegram delivers it to the
-webhook, the webhook drops it and replies to *Telegram* (not to them) that it
-was ignored. **They get no reply at all** — no error, no "not authorized", just
-silence. Their text is never parsed, never sent to the LLM, and never written
-to the database.
+- **O segredo** impede que alguém que descobriu a URL da sua função injete
+  mensagens falsas. Só o Telegram conhece o segredo, porque você o registrou
+  com `setWebhook`.
+- **A lista de chats** impede que alguém que descobriu o `@nome` do bot o use.
 
-Button taps are checked separately, on their own chat id, because a
-`callback_query` is a different update type that does not carry
-`update.message`. Forwarding one of your confirmation messages to someone else
-does not give them a working button: their tap arrives from their chat and is
-dropped.
+O que um estranho vê: ele manda uma mensagem, o Telegram a entrega ao webhook,
+o webhook a descarta e responde ao *Telegram* (não a ele) que ignorou. **Ele
+não recebe resposta nenhuma**: nem erro, nem "não autorizado", só silêncio. O
+texto dele nunca é interpretado, nunca vai para a IA e nunca é gravado no
+banco.
 
-### Sharing it with the household
+Toques em botões são verificados separadamente, pelo ID do próprio chat,
+porque um `callback_query` é outro tipo de atualização e não traz
+`update.message`. Encaminhar uma confirmação sua para outra pessoa não dá a
+ela um botão funcionando: o toque dela chega do chat dela e é descartado.
 
-The check is on the **chat** id, not the sender id. So there are two ways to
-let a second person in, and the difference matters:
+### Compartilhando com a família
 
-- **A group chat.** Put the bot in a group, find the group's chat id (a
-  negative number), and point `TELEGRAM_ALLOWED_CHAT_ID` at it. Everyone in
-  that group can then drive the bot, and all confirmations land there. This is
-  usually what a couple or a family wants.
-- **Nothing else.** There is no second-chat allowlist. The comparison is a
-  single string equality against one value.
+A verificação usa o ID do **chat**, não o de quem mandou. Então só existe um
+jeito de deixar uma segunda pessoa usar o bot:
 
-Two things to know before doing the group route:
+- **Um grupo.** Coloque o bot num grupo, descubra o ID do grupo (um número
+  negativo) e aponte `TELEGRAM_ALLOWED_CHAT_ID` para ele. Todos no grupo
+  podem usar o bot, e todas as confirmações aparecem ali. Normalmente é isso
+  que um casal ou uma família quer.
+- **Não existe outro jeito.** Não há uma segunda lista de chats autorizados:
+  a comparação é uma única igualdade de texto contra um único valor.
 
-1. Bots in groups run in **privacy mode** by default, which means they only
-   receive messages that start with `/` or that mention the bot — free text
-   like "comprar leite" would never reach the webhook. Turn it off in
-   BotFather: `/setprivacy` → select the bot → `Disable`.
-2. Everyone in that group can read and change every list, and undo anything
-   anyone else did. There is no per-person scoping anywhere in the schema.
+Duas coisas a saber antes de usar um grupo:
 
-To move the bot to a different chat, re-run the configure script with the new
-id — it updates the stored secret in place:
+1. Por padrão, bots em grupos rodam em **modo de privacidade**: só recebem
+   mensagens que começam com `/` ou que mencionam o bot, então um texto como
+   "comprar leite" nunca chegaria ao webhook. Desative no BotFather:
+   `/setprivacy` → escolha o bot → `Disable`.
+2. Todos no grupo podem ler e mudar todas as listas, e desfazer o que
+   qualquer outra pessoa fez. Não existe separação por pessoa em nenhuma
+   parte do banco.
+
+Para mover o bot para outro chat, rode o script de configuração de novo com o
+novo ID; ele atualiza o segredo salvo:
 
 ```sh
 npm run telegram:configure -- \
-  --bot-token 123456789:telegram-bot-token \
+  --bot-token 123456789:token-do-bot \
   --chat-id -1001234567890 \
-  --webhook-url https://your-project.insforge.app/functions/telegram-webhook
+  --webhook-url https://seu-projeto.insforge.app/functions/telegram-webhook
 ```
 
-### If you think the bot was compromised
+### Se você acha que o bot foi comprometido
 
-Rotating the bot token with BotFather (`/revoke`) kills the old token
-immediately, but the webhook registration goes with it — re-run
-`npm run telegram:configure` with the new token to store it and register the
-webhook again.
+Trocar o token do bot no BotFather (`/revoke`) invalida o token antigo na
+hora, mas o registro do webhook vai junto. Rode `npm run telegram:configure`
+de novo com o token novo para salvá-lo e registrar o webhook outra vez.
 
-The webhook secret rotates independently: change `TELEGRAM_WEBHOOK_SECRET` in
-InsForge, then re-run the same script so Telegram is told the new value. The
-two sides are compared on every update, so while they disagree the bot is
-silent and every update is rejected with `401`.
+O segredo do webhook é trocado de forma independente: mude
+`TELEGRAM_WEBHOOK_SECRET` no InsForge e rode o mesmo script, para que o
+Telegram receba o novo valor. Os dois lados são comparados a cada mensagem,
+então, enquanto estiverem diferentes, o bot fica em silêncio e toda
+atualização é recusada com `401`.
 
 ---
 
-## Commands
+## Comandos
 
-| Command | Also | Does |
+| Comando | Também | O que faz |
 | --- | --- | --- |
-| `/start` | `/menu` | Shows the welcome text and pins the button keyboard |
-| `/ajuda` | `/help` | Prints the full cheat sheet of free-text phrasings |
-| `/listas` | `/lista`, `/ver`, the `👀 Ver listas` button | Prints the agenda, then the three lists (tarefas, notas, compras) |
-| `/exportar [scope] [format]` | `/export` | Sends a `.json` (default) or `.yaml` file with the same data — one scope (`compras`, `tarefas`, `notas`, `agenda`) or `tudo` (default) |
-| `/resumo [fechar]` | | Posts today's Markdown digest (see below). Preview only, unless `fechar` is added |
-| `/resumo_hora [0-23]` | `/resumohora` | Shows or sets the local hour the automatic digest closes the day at (default 22) |
+| `/start` | `/menu` | Mostra a mensagem de boas-vindas e fixa o teclado de botões |
+| `/ajuda` | `/help` | Mostra a colinha completa de frases em texto livre |
+| `/listas` | `/lista`, `/ver`, o botão `👀 Ver listas` | Mostra a agenda e depois as três listas (tarefas, notas, compras) |
+| `/exportar [escopo] [formato]` | `/export` | Manda um arquivo `.json` (padrão) ou `.yaml` com os mesmos dados: um escopo (`compras`, `tarefas`, `notas`, `agenda`) ou `tudo` (padrão) |
+| `/resumo [fechar]` | | Mostra o resumo do dia em Markdown (veja abaixo). Só prévia, a menos que você escreva `fechar` |
+| `/resumo_hora [0-23]` | `/resumohora` | Mostra ou define a hora local em que o resumo automático fecha o dia (padrão: 22) |
 
-Commands are matched on the first token and are case-insensitive, so
-`/Listas@meubot` works. `/exportar`'s two arguments are order-independent
-(`/exportar yaml agenda` and `/exportar agenda yaml` are the same request).
+Os comandos são reconhecidos pela primeira palavra, sem diferenciar
+maiúsculas de minúsculas, então `/Listas@meubot` funciona. Os dois argumentos
+do `/exportar` podem vir em qualquer ordem (`/exportar yaml agenda` e
+`/exportar agenda yaml` são o mesmo pedido).
 
-The keyboard is persistent — it stays in the chat until dismissed, and `/menu`
-brings it back:
+O teclado é persistente: fica na conversa até você escondê-lo, e `/menu` o
+traz de volta:
 
 ```text
 📋 Tarefa      📝 Nota
@@ -106,21 +110,22 @@ brings it back:
        👀 Ver listas
 ```
 
-Tapping a category sends a force-reply prompt; your answer is attached to that
-category. The category is recovered from the prompt text itself, so the bot
-holds no session state and a reply still works days later, or after a redeploy.
+Tocar numa categoria manda uma pergunta com resposta obrigatória, e a sua
+resposta vai para aquela categoria. O bot recupera a categoria pelo próprio
+texto da pergunta, então não guarda estado de sessão: uma resposta funciona
+mesmo dias depois, ou depois de um novo deploy.
 
-`/listas`, `/exportar`, `/resumo`, `/resumo_hora` and the three list categories
-never call the LLM. Only `📅 Agenda` does, because resolving "amanhã às 14h"
-into an absolute timestamp needs one.
+`/listas`, `/exportar`, `/resumo`, `/resumo_hora` e as três categorias de
+lista nunca chamam a IA. Só o `📅 Agenda` chama, porque transformar "amanhã às
+14h" num horário exato precisa dela.
 
 ---
 
-## Daily Digest
+## Resumo Diário
 
-Once a day, at a locally-configured hour (`/resumo_hora`, default 22h,
-timezone from `DASHBOARD_TIMEZONE`), the bot posts a Markdown message meant to
-be pasted straight into a note-taking app (Obsidian, etc.):
+Uma vez por dia, na hora local configurada (`/resumo_hora`, padrão 22h, fuso
+de `DASHBOARD_TIMEZONE`), o bot manda uma mensagem em Markdown feita para ser
+colada direto num app de notas (Obsidian etc.):
 
 ```markdown
 # 📆 Resumo do dia — 12/09
@@ -137,269 +142,317 @@ Janela: 11/09 22:00 → 12/09 22:00
 - 📋 Ligar pro dentista
 ```
 
-Two independent questions, not a partition of one list: an item added and
-finished in the same window appears in both sections (like `Leite` above).
-Once the message is sent, every item that showed up under **Concluído** is
-deleted from the lists — the message itself becomes the permanent record,
-and the table only ever holds what is still open.
+As duas seções respondem a perguntas independentes, não dividem uma lista em
+duas: um item adicionado e concluído na mesma janela aparece nas duas (como o
+`Leite` acima). Depois que a mensagem é enviada, todos os itens que
+apareceram em **Concluído** são apagados das listas. A mensagem vira o
+registro permanente, e a tabela só guarda o que ainda está aberto.
 
-The automatic run is driven by an hourly cron (`scripts/schedule-daily-
-digest.mjs`) hitting `telegram-webhook` with a dedicated `DAILY_DIGEST_TOKEN`
-header — InsForge schedules carry no timezone, so instead of keeping a cron
-expression in sync with a local hour, the tick fires every hour and the
-function itself decides whether the current hour (converted to
-`DASHBOARD_TIMEZONE`) matches the configured one. Whether today's close has
-already happened is an atomic claim in `bot_settings` (an `INSERT` against a
-primary key, not a read-then-write flag), so a tick that lands twice in the
-same hour never double-sends. The window itself starts at the last successful
-close, not a flat "24 hours ago" — if one tick is ever missed (a platform
-hiccup), the next one's window simply stretches back to cover the gap instead
-of silently losing it.
+Como a execução automática funciona:
 
-`/resumo` runs the same report on demand, for the last 24 hours from *now* —
-useful any time, and it never deletes anything or marks the day as closed, so
-it can't steal or duplicate the automatic close-out. Add `fechar`
-(`/resumo fechar`) to force that close-out immediately instead of waiting for
-the configured hour — e.g. when going to bed earlier than usual; it uses the
-same since-last-close window as the automatic run, and marks the day closed
-so the schedule doesn't also close it again later.
+- **Disparo:** um cron de hora em hora (`scripts/schedule-daily-digest.mjs`)
+  chama o `telegram-webhook` com um cabeçalho `DAILY_DIGEST_TOKEN` próprio.
+- **Fuso:** os agendamentos do InsForge não têm fuso horário. Em vez de manter
+  uma expressão cron sincronizada com a hora local, o disparo acontece toda
+  hora, e a própria função decide se a hora atual (convertida para
+  `DASHBOARD_TIMEZONE`) é a configurada.
+- **Sem envio duplicado:** saber se o dia já foi fechado é uma reserva
+  atômica em `bot_settings` (um `INSERT` contra uma chave primária, não uma
+  flag lida e depois gravada). Assim, um disparo que chegue duas vezes na
+  mesma hora nunca envia em dobro.
+- **Janela:** começa no último fechamento bem-sucedido, e não num "24 horas
+  atrás" fixo. Se um disparo falhar (um soluço da plataforma), a janela do
+  próximo simplesmente se estende para cobrir o buraco, em vez de perdê-lo em
+  silêncio.
 
-Every write that flips an item's `done` — from Telegram, from the Kindle's own
-touch checkbox (`kindle-dashboard-toggle.ts`), and undo — sets `completed_at`
-alongside it, since that timestamp (not `updated_at`, which also moves on a
-plain list-to-list move) is the digest's only way to know an item finished
-inside the window versus just being edited during it.
+O `/resumo` gera o mesmo relatório na hora, cobrindo as últimas 24 horas a
+partir de *agora*. Ele serve a qualquer momento e nunca apaga nada nem marca o
+dia como fechado, então não rouba nem duplica o fechamento automático.
 
-Setup, once per backend: `npm run kit:backend` applies the migration and
-generates `DAILY_DIGEST_TOKEN`; then `npm run digest:schedule -- --base-url
-<INSFORGE_BASE_URL>` creates the hourly schedule.
+Escreva `fechar` (`/resumo fechar`) para forçar o fechamento na hora, sem
+esperar a hora configurada (por exemplo, quando for dormir mais cedo). Ele usa
+a mesma janela "desde o último fechamento" da execução automática e marca o
+dia como fechado, para o agendamento não fechar de novo depois.
+
+Toda gravação que muda o `done` de um item também grava o `completed_at`:
+pelo Telegram, pelo toque no próprio Kindle (`kindle-dashboard-toggle.ts`) e
+pelo desfazer. Esse horário é o único jeito de o resumo saber se um item foi
+concluído dentro da janela ou só editado durante ela. O `updated_at` não
+serve para isso, porque também muda quando um item troca de lista.
+
+Configuração, uma vez por backend:
+
+1. `npm run kit:backend` aplica a migration e gera o `DAILY_DIGEST_TOKEN`.
+2. `npm run digest:schedule -- --base-url <INSFORGE_BASE_URL>` cria o
+   agendamento de hora em hora.
 
 ---
 
-## What It Understands
+## O Que Ele Entende
 
-Free text, voice, or button — all three end at the same action dispatcher.
-Lists are matched by alias, accents optional, Portuguese and English:
+Texto livre, voz ou botão: os três terminam no mesmo despachante de ações. As
+listas são reconhecidas por apelidos, com ou sem acento, em português e
+inglês:
 
-| List | Aliases |
+| Lista | Apelidos |
 | --- | --- |
 | 🛒 Compras | `compras`, `comprar`, `mercado`, `supermercado`, `feira`, `grocery`, `groceries`, `shopping`, `market` |
 | 📋 Tarefas | `tarefa(s)`, `afazeres`, `pendências`, `todo`, `to-do`, `task(s)`, `errand(s)` |
 | 📝 Notas | `nota(s)`, `anotação`, `recado`, `note(s)` |
 
-| Intent | Examples |
+| Intenção | Exemplos |
 | --- | --- |
-| add | `comprar leite e pão` · `adicionar limpar a mesa nas tarefas` · `anota o código do portão 4417` |
-| complete | `já comprei o leite` · `feito: limpar a mesa` · `mark milk done` |
-| uncomplete | `desmarca o leite` · `mark clean desk not done` |
-| delete | `tira os ovos das compras` · `apaga limpar a mesa das tarefas` |
-| clear | `limpa as tarefas` · `esvazia as compras` |
-| edit | `mude o texto do item 3 da lista de compras para leite integral` |
-| important / unimportant | `marca a tarefa 6 como importante` · `tira a importância do item 2` |
-| schedule | `reunião amanhã às 14h com o time` · `consulta dia 20/09 às 10h` |
-| cancel | `cancela a reunião do time` · `cancela o evento 1` |
+| adicionar | `comprar leite e pão` · `adicionar limpar a mesa nas tarefas` · `anota o código do portão 4417` |
+| concluir | `já comprei o leite` · `feito: limpar a mesa` |
+| reabrir | `desmarca o leite` |
+| apagar | `tira os ovos das compras` · `apaga limpar a mesa das tarefas` |
+| limpar | `limpa as tarefas` · `esvazia as compras` |
+| editar | `mude o texto do item 3 da lista de compras para leite integral` |
+| importante / não importante | `marca a tarefa 6 como importante` · `tira a importância do item 2` |
+| agendar | `reunião amanhã às 14h com o time` · `consulta dia 20/09 às 10h` |
+| cancelar | `cancela a reunião do time` · `cancela o evento 1` |
 
-One message can carry several different intents; each is applied to its own
-list and a single `↩️ Desfazer` takes the whole message back. Several items of
-the same intent are one action — "comprar leite e pão" is one add with two
-items, not two adds.
+Uma mensagem pode ter várias intenções diferentes. Cada uma é aplicada na sua
+lista, e um único `↩️ Desfazer` desfaz a mensagem inteira. Vários itens da
+mesma intenção são uma ação só: "comprar leite e pão" é uma adição com dois
+itens, não duas adições.
 
-If a complete/uncomplete/delete does not name a list, the bot searches all
-three and says which one it hit.
+Se um pedido de concluir, reabrir ou apagar não citar a lista, o bot procura
+nas três e diz em qual encontrou.
 
-### Numbered items and importance
+### Itens numerados e importância
 
-`/listas` numbers every row in a list (`3. comprar leite`) and every upcoming
-event in the agenda block (`1. 14:00 — Reunião`). That number is a live
-position — open items first, important ones ahead of the rest, done items
-last (see `orderForNumbering` in `telegram-webhook.ts`) — recomputed on every
-render and every reference, never stored. Refer to a row by that number
-instead of retyping its text: `conclua a tarefa 3`, `exclua o item 2 da lista
-de compras`, `cancela o evento 1`. A number always addresses exactly one row,
-so unlike a text needle it never triggers the disambiguation flow below.
+O `/listas` numera cada item de cada lista (`3. comprar leite`) e cada evento
+futuro da agenda (`1. 14:00 — Reunião`). O número é uma posição calculada na
+hora, nunca guardada, e recalculada a cada exibição e a cada referência. A
+ordem é:
 
-Marking an item `important` (`marca a tarefa 6 como importante`) makes it sort
-ahead of the rest of its open/done group and prefixes its number with `!`
-(`!6. cortar cabelo`) in `/listas`; `/exportar` carries the same flag as an
-`important` field per item. `unimportant` clears it. Both are number- or
-text-addressed like complete/delete, and both carry an undo. There is no way
-to set importance while adding an item in the same breath — mark it
-afterward, same message or a follow-up.
+1. itens abertos, com os importantes antes dos demais;
+2. itens concluídos por último.
 
-**Voice notes**: hold to record and speak. Transcription and parsing happen in
-one model call, so a voice note costs the same single request as typed text.
-Limits: 5 minutes, 5 MB. Requires a Gemini `LLM_API_KEY` — with another
-provider, voice reports itself unavailable and everything else keeps working.
+(A regra está em `orderForNumbering`, no `telegram-webhook.ts`.)
+
+Use o número em vez de digitar o texto de novo: `conclua a tarefa 3`,
+`exclua o item 2 da lista de compras`, `cancela o evento 1`. Um número sempre
+aponta para exatamente um item, então, ao contrário de um trecho de texto,
+nunca dispara a pergunta de desambiguação descrita abaixo.
+
+Marcar um item como `importante` (`marca a tarefa 6 como importante`) tem
+três efeitos:
+
+- ele passa à frente dos demais do seu grupo (abertos ou concluídos);
+- o número dele ganha um `!` no `/listas` (`!6. cortar cabelo`);
+- o `/exportar` leva o campo `important` em cada item.
+
+"Não importante" remove a marcação. As duas ações aceitam número ou texto,
+como concluir e apagar, e as duas podem ser desfeitas. Não dá para marcar a
+importância no mesmo gesto de adicionar: marque depois, na mesma mensagem ou
+numa seguinte.
+
+**Mensagens de voz:**
+
+- **Como usar:** segure para gravar e fale.
+- **Custo:** a transcrição e a interpretação acontecem numa única chamada à
+  IA, então um áudio custa a mesma requisição que um texto.
+- **Limites:** 5 minutos e 5 MB.
+- **Requisito:** uma `LLM_API_KEY` do Gemini. Com outro provedor, o bot avisa
+  que o áudio está indisponível, e todo o resto continua funcionando.
 
 ---
 
-## What It Answers
+## O Que Ele Responde
 
-Every reply names the list it touched and echoes the item text **as stored**,
-not as you typed it, so a fuzzy match that hit the wrong row is visible
-immediately.
+Toda resposta diz qual lista foi mexida e repete o texto do item **como está
+salvo**, não como você digitou. Assim, se a busca acertou o item errado, você
+vê na hora.
 
-| Reply | Means |
+| Resposta | Significa |
 | --- | --- |
-| `✅ Anotei em 🛒 Compras: leite.` | Added |
-| `✅ Concluí em 🛒 Compras: Café.` | Marked done — note the stored casing |
-| `↩️ Reabri em 📋 Tarefas: regar as plantas.` | Marked open again |
-| `🗑 Removi de 🛒 Compras: ovos.` | Deleted |
-| `✏️ Editei em 🛒 Compras: leite → leite integral.` | Text replaced |
-| `⭐ Marquei como importante em 📋 Tarefas: cortar cabelo.` | Importance set (or cleared) |
-| `🤔 Não achei "banana" em 🛒 Compras.` | Nothing matched — **nothing was changed** |
-| `🤔 Não achei "item 5" em 📋 Tarefas.` | That number does not exist in that list right now |
-| `📅 Agendado: Reunião com o time` / `amanhã às 14:00 · sala 2` | Calendar event created |
-| `🎤 "comprar leite, pão e ovos"` | What the bot heard, before what it did |
-| `🤔 Não entendi.` | Parsed to nothing; use the buttons |
-| `🤔 Não peguei a data/hora.` | Calendar intent recognised, timestamp not resolvable |
-| `⏳ Meu interpretador de texto livre bateu o limite do dia.` | LLM quota (HTTP 429) — buttons still work |
-| `⏳ A IA não respondeu agora.` | LLM timeout or 5xx after one retry |
-| `🎤 Esse áudio é longo demais.` | Over 5 min or 5 MB |
-| `⚠️ Não consegui salvar agora.` | Database write failed |
-| `⚠️ Não consegui falar com o servidor da agenda.` | CalDAV unreachable or timed out |
-| `⚠️ A agenda ainda não está configurada no servidor.` | `CALDAV_*` secrets missing |
+| `✅ Anotei em 🛒 Compras: leite.` | Adicionado |
+| `✅ Concluí em 🛒 Compras: Café.` | Marcado como feito (repare nas maiúsculas como estão salvas) |
+| `↩️ Reabri em 📋 Tarefas: regar as plantas.` | Reaberto |
+| `🗑 Removi de 🛒 Compras: ovos.` | Apagado |
+| `✏️ Editei em 🛒 Compras: leite → leite integral.` | Texto trocado |
+| `⭐ Marquei como importante em 📋 Tarefas: cortar cabelo.` | Importância marcada (ou removida) |
+| `🤔 Não achei "banana" em 🛒 Compras.` | Nada combinou: **nada foi alterado** |
+| `🤔 Não achei "item 5" em 📋 Tarefas.` | Esse número não existe nessa lista agora |
+| `📅 Agendado: Reunião com o time` / `amanhã às 14:00 · sala 2` | Evento criado no calendário |
+| `🎤 "comprar leite, pão e ovos"` | O que o bot ouviu, antes do que ele fez |
+| `🤔 Não entendi.` | A mensagem não virou nenhuma ação; use os botões |
+| `🤔 Não peguei a data/hora.` | Entendeu que era agenda, mas não conseguiu resolver o horário |
+| `⏳ Meu interpretador de texto livre bateu o limite do dia.` | Cota da IA (HTTP 429); os botões continuam funcionando |
+| `⏳ A IA não respondeu agora.` | A IA demorou demais ou deu erro 5xx depois de uma nova tentativa |
+| `🎤 Esse áudio é longo demais.` | Mais de 5 min ou 5 MB |
+| `⚠️ Não consegui salvar agora.` | Falha ao gravar no banco |
+| `⚠️ Não consegui falar com o servidor da agenda.` | CalDAV inacessível ou demorou demais |
+| `⚠️ A agenda ainda não está configurada no servidor.` | Faltam os segredos `CALDAV_*` |
 
-The "not found" reply is the important one. Complete, uncomplete and delete
-match item text by substring, so the webhook resolves the matching rows
-*before* writing and reports what it actually changed. A blind
-`UPDATE ... ILIKE` would confirm changes that never happened.
+A resposta "não achei" é a mais importante. Concluir, reabrir e apagar
+encontram o item por um trecho do texto, então o webhook busca as linhas que
+combinam *antes* de gravar e informa o que realmente mudou. Um
+`UPDATE ... ILIKE` às cegas confirmaria mudanças que nunca aconteceram.
 
-### Undo
+### Desfazer
 
-Every confirmation that actually changed something carries an `↩️ Desfazer`
-button, good for **24 hours** and usable **once**. It reverses exactly that
-message: re-adding deleted items with their original done state, un-marking
-what it marked, deleting what it created, restoring a cancelled calendar event
-from its original ICS. Tapping a spent button says so rather than applying
-twice — the token is consumed before the operation replays, so a double tap or
-a Telegram retry cannot double-apply.
+Toda confirmação que realmente mudou algo vem com um botão `↩️ Desfazer`,
+válido por **24 horas** e utilizável **uma vez**. Ele reverte exatamente
+aquela mensagem:
 
-### Disambiguation
+- itens apagados voltam com o estado original de feito/não feito;
+- o que foi marcado é desmarcado;
+- o que foi criado é apagado;
+- um evento cancelado é restaurado a partir do ICS original.
 
-If a word matches more than one item — "já comprei o pão" with both `pão` and
-`pão de forma` on the list — **nothing is changed**. The bot lists the
-candidates as buttons and applies only the one you tap, with `⚡ Todos` when the
-sweep really was what you meant and `✖️ Cancelar` to walk away. An invalid or
-expired choice does not burn the question.
+Tocar num botão já usado avisa isso, em vez de aplicar duas vezes. O token é
+consumido antes de a operação ser refeita, então um toque duplo ou uma nova
+tentativa do Telegram não aplicam em dobro.
 
-The same happens when a cancellation matches several events, and when a
-free-text add had to guess the list because the message named none — there the
-item is saved immediately and the bot offers to move it, so nothing is held
-hostage waiting for a tap.
+### Desambiguação
 
----
+Se uma palavra combina com mais de um item (por exemplo, "já comprei o pão"
+com `pão` e `pão de forma` na lista), **nada é alterado**. O bot mostra as
+opções como botões e aplica só a que você tocar. Há também:
 
-## How A Message Becomes An Action
+- `⚡ Todos`, para quando você queria mesmo pegar todos;
+- `✖️ Cancelar`, para desistir.
 
-Four stages, first hit wins:
+Uma escolha inválida ou expirada não descarta a pergunta.
 
-1. **Fast heuristic** — fires only when the message names *both* an action verb
-   and a list, *and* carries exactly one verb family. Deliberately strict:
-   guessing the list wrong writes to the wrong place, and a message with two
-   verb families ("anota o código, adiciona regar as plantas e marca os ovos")
-   is several requests that a regex would collapse into one. Costs nothing.
-2. **Parse cache** — FNV-1a hash of the normalized text, looked up in
-   `bot_parse_cache`. 30-day TTL. Calendar results are never cached, because
-   they are resolved against "now" and would hand back yesterday's date
-   tomorrow.
-3. **LLM** — one call with a strict JSON schema (`response_format:
-   json_schema`, `strict: true`) returning an array of actions. 12-second
-   timeout, one retry on HTTP 503 only.
-4. **Heuristic fallback** — if the LLM errored or returned nothing usable. On a
-   quota error the LLM failure is kept so the reply can explain the quota wall
-   instead of pretending the message was gibberish.
+O mesmo acontece em dois outros casos:
 
-Without `LLM_API_KEY` the bot skips straight from stage 1 to stage 4 and works
-fine for explicit phrasings; only natural dates ("segunda que vem") are lost.
-
-Model output is validated, never trusted: `validateTelegramActions` accepts the
-array shape, a bare object, and the nested-wrapper shape Gemini occasionally
-emits, and discards anything that does not typecheck into a known action.
+- **Cancelamento:** quando ele combina com vários eventos.
+- **Adição sem lista:** quando o bot precisou adivinhar a lista porque a
+  mensagem não citou nenhuma. Aí o item é salvo na hora e o bot oferece
+  movê-lo, então nada fica esperando um toque seu.
 
 ---
 
-## Limits
+## Como Uma Mensagem Vira Uma Ação
 
-| Thing | Value | Where |
+Quatro etapas; a primeira que acertar vence:
+
+1. **Heurística rápida.** Só age quando a mensagem cita *ao mesmo tempo* um
+   verbo de ação e uma lista, *e* tem exatamente uma família de verbos. É
+   rígida de propósito:
+   - adivinhar a lista errada grava no lugar errado;
+   - uma mensagem com duas famílias de verbos ("anota o código, adiciona regar
+     as plantas e marca os ovos") são vários pedidos, que uma regex juntaria
+     num só.
+
+   Não custa nada.
+2. **Cache de interpretação.** Um hash FNV-1a do texto normalizado, buscado
+   em `bot_parse_cache`, com validade de 30 dias. Resultados de agenda nunca
+   entram no cache, porque dependem de "agora" e amanhã devolveriam a data de
+   ontem.
+3. **IA.** Uma chamada com um JSON schema rígido (`response_format:
+   json_schema`, `strict: true`) que devolve uma lista de ações. Tempo
+   limite de 12 segundos e uma nova tentativa só em caso de HTTP 503.
+4. **Heurística de reserva.** Usada se a IA deu erro ou não devolveu nada
+   aproveitável. Num erro de cota, a falha da IA é guardada para a resposta
+   explicar o limite, em vez de fingir que a mensagem não fazia sentido.
+
+Sem `LLM_API_KEY`, o bot pula direto da etapa 1 para a 4 e funciona bem com
+frases explícitas; só as datas em linguagem natural ("segunda que vem") se
+perdem.
+
+A resposta da IA é validada, nunca aceita de olhos fechados. O
+`validateTelegramActions` aceita três formatos:
+
+- a lista de ações;
+- um objeto solto;
+- o formato aninhado que o Gemini às vezes devolve.
+
+Qualquer coisa que não vire uma ação conhecida é descartada.
+
+---
+
+## Limites
+
+| O quê | Valor | Onde |
 | --- | --- | --- |
-| Undo token lifetime | 24 h, single use | `UNDO_TTL_MS` |
-| Parse cache entry lifetime | 30 days | `PARSE_CACHE_TTL_MS` |
-| Voice note | 5 min / 5 MB | `MAX_VOICE_SECONDS`, `MAX_VOICE_BYTES` |
-| LLM call timeout | 12 s | `callLlm` |
-| CalDAV timeout | 8 s | `applyCalendarAction` |
-| Agenda events in `/listas` | 5 | `OVERVIEW_MAX_EVENTS` |
-| Agenda lookahead | 365 days | `AGENDA_LOOKAHEAD_DAYS` |
-| Telegram `callback_data` | 64 bytes (protocol cap) | tokens are 16 hex chars |
+| Validade do botão desfazer | 24 h, uso único | `UNDO_TTL_MS` |
+| Validade de uma entrada no cache | 30 dias | `PARSE_CACHE_TTL_MS` |
+| Mensagem de voz | 5 min / 5 MB | `MAX_VOICE_SECONDS`, `MAX_VOICE_BYTES` |
+| Tempo limite da IA | 12 s | `callLlm` |
+| Tempo limite do CalDAV | 8 s | `applyCalendarAction` |
+| Eventos da agenda no `/listas` | 5 | `OVERVIEW_MAX_EVENTS` |
+| Horizonte da agenda | 365 dias | `AGENDA_LOOKAHEAD_DAYS` |
+| `callback_data` do Telegram | 64 bytes (limite do protocolo) | os tokens têm 16 caracteres hex |
 
-Free-tier Gemini meters **requests per day, not tokens**. The full flash models
-allow around 20 a day; the flash-lite models allow far more, which is why
-`LLM_MODEL` defaults to `gemini-3.5-flash-lite`. Check your own numbers at
-<https://ai.dev/rate-limit>. `LLM_REASONING_EFFORT=low` is what keeps replies
-near 1 s — Gemini 3.x thinks before answering by default, which costs 9–13 s on
-a task this small.
+O plano gratuito do Gemini conta **requisições por dia, não tokens**. Os
+modelos flash completos permitem cerca de 20 por dia; os flash-lite permitem
+bem mais, e é por isso que o `LLM_MODEL` padrão é `gemini-3.5-flash-lite`.
+Confira os seus números em <https://ai.dev/rate-limit>.
+
+O `LLM_REASONING_EFFORT=low` é o que mantém as respostas perto de 1 s: por
+padrão, o Gemini 3.x "pensa" antes de responder, o que custa 9–13 s numa
+tarefa tão pequena.
 
 ---
 
-## Operating It
+## Operação
 
-Two tables belong to the bot alone; neither is read by the Kindle:
+Duas tabelas são só do bot; o Kindle não lê nenhuma delas:
 
-- **`bot_actions`** — pending undo and disambiguation payloads, keyed by the
-  token that rides in `callback_data`. Every undo write also prunes rows older
-  than 24 h — of both kinds — so the table stays small on its own without a
-  scheduled job.
-- **`bot_parse_cache`** — `message_hash` → action, with a `hits` counter and
-  `last_used_at`. Safe to truncate at any time; the bot refills it.
+- **`bot_actions`**: dados pendentes de desfazer e de desambiguação,
+  identificados pelo token que vai no `callback_data`. Toda gravação de
+  desfazer também apaga as linhas com mais de 24 h (dos dois tipos), então a
+  tabela se mantém pequena sozinha, sem tarefa agendada.
+- **`bot_parse_cache`**: `message_hash` → ação, com um contador `hits` e
+  `last_used_at`. Pode ser esvaziada a qualquer momento; o bot preenche de
+  novo.
 
 ```sh
-# what is cached, most used first
+# o que está no cache, mais usados primeiro
 npx @insforge/cli db query -- \
   "SELECT hits, action, last_used_at FROM bot_parse_cache ORDER BY hits DESC LIMIT 20;"
 
-# forget one bad parse (or TRUNCATE for all of them)
+# esquecer uma interpretação ruim (ou TRUNCATE para todas)
 npx @insforge/cli db query -- \
-  "DELETE FROM bot_parse_cache WHERE action::text ILIKE '%wrong item%';"
+  "DELETE FROM bot_parse_cache WHERE action::text ILIKE '%item errado%';"
 
-# pending undo/choice tokens right now
+# tokens de desfazer/escolha pendentes agora
 npx @insforge/cli db query -- \
   "SELECT id, kind, created_at FROM bot_actions ORDER BY created_at DESC;"
 ```
 
-Both tables have RLS enabled and are reached only through the function's
-service key.
+As duas tabelas têm RLS ativado e só são acessadas pela chave de serviço da
+função.
 
-Function logs are prefixed `telegram-webhook` and name the failure, never the
-payload: `llm_http_429`, `llm_network_error`, `voice_http_400`,
-`calendar_put_507`, `parse_cache_read_failed`, `undo_consume_failed`,
-`prune_failed`. Successful requests log a timing line with `total_ms`.
+Os logs da função começam com `telegram-webhook` e dizem o tipo de falha,
+nunca o conteúdo da mensagem: `llm_http_429`, `llm_network_error`,
+`voice_http_400`, `calendar_put_507`, `parse_cache_read_failed`,
+`undo_consume_failed`, `prune_failed`. Requisições bem-sucedidas registram uma
+linha de tempo com `total_ms`.
 
-### Troubleshooting
+### Solução de problemas
 
-| Symptom | Likely cause |
+| Sintoma | Causa provável |
 | --- | --- |
-| Bot silent to everything, including `/start` | Webhook secret mismatch (every update 401s), or `TELEGRAM_ALLOWED_CHAT_ID` points at a different chat. Check `getWebhookInfo` for `last_error_message`. |
-| Buttons work, free text says `🤔 Não entendi` | `LLM_API_KEY` missing or wrong — the heuristic path is all that is left |
-| `⏳ bateu o limite do dia` | Daily request quota. Switch `LLM_MODEL` to a flash-lite model or wait for the reset |
-| Replies take 9–13 s | `LLM_REASONING_EFFORT` is not set to `low` |
-| Voice says it needs AI configured | `LLM_BASE_URL` does not point at Gemini and `LLM_AUDIO_BASE_URL` is unset |
-| Calendar events save but never appear | `CALDAV_CALENDAR_PATH` points at a collection the Kindle payload does not read |
-| Agenda shows fewer events than exist | `AGENDA_LOOKAHEAD_DAYS` was shrunk — it bounds the query, so anything past it is invisible no matter how few events are found |
-| Event times are off by a fixed number of hours | An older deploy: `TZID` was resolved against the edge host's zone instead of the calendar's |
-| A button spins forever | The function errored before `answerCallbackQuery`; check the logs for that request |
+| O bot não responde a nada, nem ao `/start` | Segredo do webhook diferente (toda atualização recebe 401), ou `TELEGRAM_ALLOWED_CHAT_ID` aponta para outro chat. Veja o `last_error_message` em `getWebhookInfo`. |
+| Os botões funcionam, mas o texto livre responde `🤔 Não entendi` | `LLM_API_KEY` ausente ou errada; só sobrou a heurística |
+| `⏳ bateu o limite do dia` | Cota diária de requisições. Troque o `LLM_MODEL` por um flash-lite ou espere renovar |
+| Respostas levam 9–13 s | `LLM_REASONING_EFFORT` não está como `low` |
+| O áudio diz que precisa de IA configurada | `LLM_BASE_URL` não aponta para o Gemini e `LLM_AUDIO_BASE_URL` não está definida |
+| Os eventos são salvos mas nunca aparecem | `CALDAV_CALENDAR_PATH` aponta para uma coleção diferente da que o painel lê |
+| A agenda mostra menos eventos do que existem | `AGENDA_LOOKAHEAD_DAYS` foi reduzido; ele limita a busca, então o que passar dele fica invisível |
+| Os horários dos eventos estão errados por um número fixo de horas | Configure `DASHBOARD_TIMEZONE` no backend |
+| Um botão fica carregando para sempre | A função deu erro antes do `answerCallbackQuery`; procure essa requisição nos logs |
 
 ---
 
-## Design Notes
+## Notas De Design
 
-- **Single-owner by design.** One chat, one set of lists, no per-user scoping
-  in any table. A hosted multi-user version would need row ownership and device
-  pairing everywhere.
-- **The buttons never need the LLM.** Every destructive or additive operation
-  is reachable without a model call, which is what makes a quota wall an
-  inconvenience rather than an outage.
-- **Nothing is written before it is resolved.** Matching rows are selected
-  first, written by id second, and reported as hits and misses separately.
-- **Replies are in Brazilian Portuguese**, including every error string — the
-  copy lives in one `MSG` block at the top of the function, next to
-  `LIST_LABELS`, so translating the bot means editing one place.
+- **Um único dono, de propósito.** Um chat, um conjunto de listas, sem
+  separação por usuário em nenhuma tabela. Uma versão hospedada para vários
+  usuários precisaria de dono por linha e pareamento de aparelhos em todo
+  lugar.
+- **Os botões nunca precisam da IA.** Toda operação de adicionar ou remover
+  funciona sem chamar um modelo, e é isso que faz o fim da cota ser um
+  incômodo e não uma pane.
+- **Nada é gravado antes de ser resolvido.** As linhas que combinam são
+  selecionadas primeiro, gravadas pelo ID depois, e os acertos e erros são
+  informados separadamente.
+- **As respostas são em português do Brasil**, incluindo todas as mensagens
+  de erro. Os textos ficam num bloco `MSG` no topo da função, ao lado de
+  `LIST_LABELS`, então mudar os textos do bot significa editar um lugar só.

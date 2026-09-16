@@ -13,10 +13,10 @@ const schemaMigrations = [
 ];
 
 const functions = [
-  ["kindle-dashboard-data", "functions/kindle-dashboard-data.ts", "Kindle Dashboard Data"],
-  ["kindle-dashboard-events", "functions/kindle-dashboard-events.ts", "Kindle Dashboard Events"],
-  ["kindle-dashboard-toggle", "functions/kindle-dashboard-toggle.ts", "Kindle Dashboard Toggle"],
-  ["telegram-webhook", "functions/telegram-webhook.ts", "Telegram Planner Webhook"]
+  ["kindle-dashboard-data", "functions/kindle-dashboard-data.ts", "Painel Kindle - Dados"],
+  ["kindle-dashboard-events", "functions/kindle-dashboard-events.ts", "Painel Kindle - Eventos ao vivo"],
+  ["kindle-dashboard-toggle", "functions/kindle-dashboard-toggle.ts", "Painel Kindle - Marcar itens"],
+  ["telegram-webhook", "functions/telegram-webhook.ts", "Painel Kindle - Bot do Telegram"]
 ];
 
 const flags = new Set(process.argv.slice(2));
@@ -24,33 +24,34 @@ const skipSecrets = flags.has("--skip-secrets");
 const skipDeploy = flags.has("--skip-deploy");
 
 if (flags.has("--help")) {
-  console.log(`Usage: npm run kit:backend -- [--skip-secrets] [--skip-deploy]
+  console.log(`Uso: npm run kit:backend -- [--skip-secrets] [--skip-deploy]
 
-Applies the public Kindle Dashboard schema to the currently linked InsForge
-project, creates missing generated secrets, and deploys edge functions.
+Aplica o schema do Painel Kindle no projeto InsForge vinculado, cria os
+segredos gerados que estiverem faltando e publica as edge functions.
 
-Before running:
+Antes de rodar:
   npx @insforge/cli login
   npx @insforge/cli create --name kindle-dashboard --region us-east --template empty
 
-Afterwards, set the secrets that cannot be generated automatically (LLM_API_KEY,
-WEATHER_LAT, WEATHER_LON, CALDAV_BASE_URL, CALDAV_USERNAME, CALDAV_PASSWORD,
-CALDAV_CALENDAR_PATH, TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_CHAT_ID) with:
-  npx @insforge/cli secrets add <KEY> <VALUE>
+Depois, configure os segredos que nao podem ser gerados automaticamente
+(INSFORGE_BASE_URL, INSFORGE_API_KEY, DASHBOARD_TIMEZONE, WEATHER_LAT,
+WEATHER_LON, LLM_API_KEY, CALDAV_*) com:
+  npx @insforge/cli secrets add <CHAVE> <VALOR>
+Veja docs/CONFIGURACAO.md.
 `);
   process.exit(0);
 }
 
-console.log("Checking linked InsForge project...");
+console.log("Verificando o projeto InsForge vinculado...");
 run(["current"]);
 
-console.log("Applying schema migrations...");
+console.log("Aplicando as migrations do banco...");
 for (const migration of schemaMigrations) {
   applyMigration(migration);
 }
 
 if (!skipSecrets) {
-  console.log("Ensuring generated backend secrets exist...");
+  console.log("Garantindo que os segredos gerados existem...");
   ensureSecret("TELEGRAM_WEBHOOK_SECRET", randomSecret());
   ensureSecret("DASHBOARD_READ_TOKEN", randomSecret());
   ensureSecret("DASHBOARD_TOGGLE_TOKEN", randomSecret());
@@ -58,15 +59,15 @@ if (!skipSecrets) {
 }
 
 if (!skipDeploy) {
-  console.log("Deploying InsForge functions...");
+  console.log("Publicando as functions no InsForge...");
   for (const [slug, file, name] of functions) {
     run(["functions", "deploy", slug, "--file", file, "--name", name]);
   }
 }
 
-console.log("Backend kit bootstrap complete.");
-console.log("Next: set Telegram secrets with npm run telegram:configure, then copy the endpoints into kindle-dashboard/config.sh.");
-console.log("Then: npm run digest:schedule -- --base-url <your INSFORGE_BASE_URL> to turn on the daily digest's hourly tick.");
+console.log("Backend pronto.");
+console.log("Proximo passo: conecte o Telegram com npm run telegram:configure e depois copie as URLs para o config.sh do Kindle.");
+console.log("Depois: npm run digest:schedule -- --base-url <sua INSFORGE_BASE_URL> para ativar o resumo diario.");
 
 function applyMigration(path) {
   console.log(`- ${path}`);
@@ -79,10 +80,10 @@ function applyMigration(path) {
 function ensureSecret(key, value) {
   try {
     run(["secrets", "get", key, "--json"], { silent: true });
-    console.log(`- ${key} already exists`);
+    console.log(`- ${key} ja existe`);
   } catch {
     run(["secrets", "add", key, value]);
-    console.log(`- added ${key}`);
+    console.log(`- ${key} criado`);
   }
 }
 

@@ -1,22 +1,26 @@
-# Copy this file to config.sh inside the installed KUAL extension and replace
-# the URLs with your own InsForge project endpoints.
+# Copie este arquivo para config.sh dentro da extensao KUAL instalada
+# (extensions/kindle-dashboard/config.sh) e troque as URLs e tokens pelos do
+# seu projeto InsForge. Guia completo: docs/CONFIGURACAO.md
 
-DASHBOARD_DATA_URL="https://your-project.insforge.app/functions/kindle-dashboard-data"
-DASHBOARD_EVENTS_URL="https://your-project.function2.insforge.app/kindle-dashboard-events"
-DASHBOARD_TOGGLE_URL="https://your-project.insforge.app/functions/kindle-dashboard-toggle"
-DASHBOARD_READ_TOKEN="replace-with-your-generated-read-token"
-DASHBOARD_TOGGLE_TOKEN="replace-with-your-generated-toggle-token"
+DASHBOARD_DATA_URL="https://seu-projeto.insforge.app/functions/kindle-dashboard-data"
+DASHBOARD_EVENTS_URL="https://seu-projeto.function2.insforge.app/kindle-dashboard-events"
+DASHBOARD_TOGGLE_URL="https://seu-projeto.insforge.app/functions/kindle-dashboard-toggle"
+DASHBOARD_READ_TOKEN="troque-pelo-seu-read-token"
+DASHBOARD_TOGGLE_TOKEN="troque-pelo-seu-toggle-token"
 
-# Text shown in the dashboard header (rendered in uppercase). Put your name,
-# your family's, or anything else here.
-DASHBOARD_TITLE="Kindle Dashboard"
+# Texto do cabecalho (aparece em maiusculas, sem acentos). Coloque seu nome,
+# o da sua familia, ou o que quiser.
+DASHBOARD_TITLE="Painel Kindle"
 
-# Always-on defaults. Override only if you know you want a different mode.
+# Padroes para ficar sempre ligado. So mude se souber o que quer.
+# INTERVAL: segundos entre atualizacoes completas (300 = 5 minutos).
 INTERVAL="300"
+# 1 = impede o Kindle de dormir enquanto o painel roda.
 DASHBOARD_KEEP_AWAKE="1"
+# "off" ou uma janela noturna sem atualizacoes, ex.: "23:00-07:00".
 DASHBOARD_SLEEP_WINDOW="off"
-# Optional: leave unset to use the Kindle's own timezone.
-# DASHBOARD_TIMEZONE="America/New_York"
-# Dark mode: 1 renders the whole dashboard white-on-black. The KUAL menu's
-# "Dark" entries force it on for that launch regardless of this setting.
+# Opcional: deixe comentado para usar o fuso do proprio Kindle.
+# DASHBOARD_TIMEZONE="America/Sao_Paulo"
+# Modo escuro: 1 desenha o painel inteiro em branco sobre preto. As opcoes
+# "(escuro)" do menu do KUAL forcam o modo escuro naquela execucao.
 DARK_MODE="0"

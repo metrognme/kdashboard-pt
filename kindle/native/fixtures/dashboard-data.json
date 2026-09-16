@@ -20,23 +20,23 @@
     "events": [
       {
         "uid": "ev-1",
-        "title": "TEAM STANDUP",
-        "start": "2026-09-11T15:00:00+05:30",
-        "end": "2026-09-11T15:30:00+05:30",
+        "title": "REUNIAO DO TIME",
+        "start": "2026-09-11T15:00:00-03:00",
+        "end": "2026-09-11T15:30:00-03:00",
         "all_day": false,
-        "location": "ROOM 2"
+        "location": "SALA 2"
       },
       {
         "uid": "ev-2",
-        "title": "DENTIST APPOINTMENT",
-        "start": "2026-09-11T19:30:00+05:30",
-        "end": "2026-09-11T20:30:00+05:30",
+        "title": "CONSULTA NO DENTISTA",
+        "start": "2026-09-11T19:30:00-03:00",
+        "end": "2026-09-11T20:30:00-03:00",
         "all_day": false,
         "location": null
       },
       {
         "uid": "ev-3",
-        "title": "BILL DUE - ELECTRICITY",
+        "title": "VENCE A CONTA DE LUZ",
         "start": "2026-09-12T00:00:00Z",
         "end": null,
         "all_day": true,
@@ -44,23 +44,23 @@
       },
       {
         "uid": "ev-4",
-        "title": "QUARTERLY REVIEW MEETING",
-        "start": "2026-10-15T14:00:00+05:30",
-        "end": "2026-10-15T15:00:00+05:30",
+        "title": "REVISAO TRIMESTRAL",
+        "start": "2026-10-15T14:00:00-03:00",
+        "end": "2026-10-15T15:00:00-03:00",
         "all_day": false,
         "location": null
       },
       {
         "uid": "ev-5",
-        "title": "CONFERENCE - KEYNOTE",
-        "start": "2026-11-03T09:00:00+05:30",
-        "end": "2026-11-03T10:30:00+05:30",
+        "title": "PALESTRA NA CONFERENCIA",
+        "start": "2026-11-03T09:00:00-03:00",
+        "end": "2026-11-03T10:30:00-03:00",
         "all_day": false,
-        "location": "HALL A"
+        "location": "AUDITORIO"
       },
       {
         "uid": "ev-6#2027-04-25",
-        "title": "BIRTHDAY - ANA",
+        "title": "ANIVERSARIO DA ANA",
         "start": "2027-04-25T00:00:00Z",
         "end": null,
         "all_day": true,
@@ -71,17 +71,17 @@
   "lists": [
     {
       "key": "todo",
-      "title": "Chores",
+      "title": "Tarefas",
       "items": [
         {
           "id": "1",
-          "text": "READ PAPER NOTES",
+          "text": "REGAR PLANTAS",
           "done": false,
           "updated_at": "2026-09-11T08:00:00.000Z"
         },
         {
           "id": "2",
-          "text": "CHARGE KINDLE",
+          "text": "LAVAR LOUCA",
           "done": true,
           "updated_at": "2026-09-11T07:00:00.000Z"
         }
@@ -89,17 +89,17 @@
     },
     {
       "key": "grocery",
-      "title": "Grocery",
+      "title": "Compras",
       "items": [
         {
           "id": "3",
-          "text": "MILK",
+          "text": "LEITE",
           "done": false,
           "updated_at": "2026-09-11T08:10:00.000Z"
         },
         {
           "id": "4",
-          "text": "EGGS",
+          "text": "OVOS",
           "done": false,
           "updated_at": "2026-09-11T08:11:00.000Z"
         }
@@ -107,11 +107,11 @@
     },
     {
       "key": "notes",
-      "title": "Notes",
+      "title": "Notas",
       "items": [
         {
           "id": "5",
-          "text": "CALL DENTIST BACK",
+          "text": "LIGAR P/ MAE",
           "done": false,
           "updated_at": "2026-09-11T08:12:00.000Z"
         }

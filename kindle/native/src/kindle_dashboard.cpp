@@ -45,7 +45,7 @@ int g_last_screen_height = kBitmapFallbackHeight;
 int g_active_list = -1;
 char g_photo_path[256] = "";
 // Header title. The bitmap font is uppercase-only, so --title is upper-cased on the way in.
-char g_title[64] = "KINDLE DASHBOARD";
+char g_title[64] = "PAINEL KINDLE";
 // Dark mode. Every draw call still works in the light palette (ink 0 on paper
 // 255) and the finished canvas is inverted once, in drawCurrentDashboard(),
 // rather than threading an ink/paper colour through ~120 call sites. Both give
@@ -502,14 +502,41 @@ void formatNumber(int value, char* out, size_t size) {
   }
 }
 
+// On-screen text is Brazilian Portuguese without accents: the 5x7 bitmap font
+// only has A-Z. Internal status strings stay English (they also go to the log)
+// and are translated only here, at display time.
+const char* displayStatus(const char* status) {
+  if (!status) return "?";
+  if (strcmp(status, "live") == 0) return "AO VIVO";
+  if (strcmp(status, "cached/offline") == 0) return "OFFLINE";
+  if (strcmp(status, "cached/local") == 0) return "CACHE";
+  if (strcmp(status, "fixture") == 0) return "EXEMPLO";
+  return status;
+}
+
+// condition_label keeps kindle-dashboard-data.ts's English vocabulary, which
+// drawWeatherIcon() matches on; only the printed label is translated.
+const char* displayCondition(const char* label) {
+  if (strcmp(label, "CLEAR") == 0) return "CEU LIMPO";
+  if (strcmp(label, "CLOUDY") == 0) return "NUBLADO";
+  if (strcmp(label, "FOG") == 0) return "NEBLINA";
+  if (strcmp(label, "DRIZZLE") == 0) return "GAROA";
+  if (strcmp(label, "RAIN") == 0) return "CHUVA";
+  if (strcmp(label, "SNOW") == 0) return "NEVE";
+  if (strcmp(label, "SHOWERS") == 0) return "PANCADAS";
+  if (strcmp(label, "STORM") == 0) return "TEMPESTADE";
+  if (strcmp(label, "UNKNOWN") == 0) return "--";
+  return label;
+}
+
 void formatDisplayDate(const char* iso, const char* status, char* out, size_t size) {
-  static const char* months[] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
-  static const char* weekdays[] = {"SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"};
+  static const char* months[] = {"JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"};
+  static const char* weekdays[] = {"DOMINGO", "SEGUNDA", "TERCA", "QUARTA", "QUINTA", "SEXTA", "SABADO"};
   int year = 0;
   int month = 0;
   int day = 0;
   if (!iso || sscanf(iso, "%4d-%2d-%2d", &year, &month, &day) != 3 || month < 1 || month > 12 || day < 1 || day > 31) {
-    snprintf(out, size, "UPDATED UNKNOWN // %s", status ? status : "UNKNOWN");
+    snprintf(out, size, "SEM DATA // %s", displayStatus(status));
     return;
   }
 
@@ -523,7 +550,7 @@ void formatDisplayDate(const char* iso, const char* status, char* out, size_t si
   const int j = y / 100;
   const int h = (day + (13 * (m + 1)) / 5 + k + k / 4 + j / 4 + 5 * j) % 7;
   const int weekday = (h + 6) % 7;
-  snprintf(out, size, "%s, %s %d // %s", weekdays[weekday], months[month - 1], day, status ? status : "UNKNOWN");
+  snprintf(out, size, "%s, %d %s // %s", weekdays[weekday], day, months[month - 1], displayStatus(status));
 }
 
 void addLine(char lines[][96], int* count, const char* text) {
@@ -598,7 +625,7 @@ void addList(char lines[][96], int* count, const List* list) {
   addSectionTitle(lines, count, title);
 
   if (list->item_count == 0) {
-    addCardText(lines, count, " [ ] Empty");
+    addCardText(lines, count, " [ ] Vazia");
     addRule(lines, count);
     return;
   }
@@ -611,7 +638,7 @@ void addList(char lines[][96], int* count, const List* list) {
   }
   if (list->item_count > shown) {
     char more[48];
-    snprintf(more, sizeof(more), " ... +%d more", list->item_count - shown);
+    snprintf(more, sizeof(more), " ... +%d itens", list->item_count - shown);
     addCardText(lines, count, more);
   }
   addRule(lines, count);
@@ -620,30 +647,30 @@ void addList(char lines[][96], int* count, const List* list) {
 int renderLines(const Dashboard* dashboard, const char* status, char lines[][96]) {
   int count = 0;
   addRule(lines, &count);
-  addCardText(lines, &count, " KINDLE DASHBOARD");
+  addCardText(lines, &count, " PAINEL KINDLE");
   char sync[64];
-  snprintf(sync, sizeof(sync), " Sync %.16s", dashboard->generated_at[0] ? dashboard->generated_at : "unknown");
+  snprintf(sync, sizeof(sync), " Sinc %.16s", dashboard->generated_at[0] ? dashboard->generated_at : "?");
   addCardText(lines, &count, sync);
   char mode[64];
-  snprintf(mode, sizeof(mode), " Mode %s | refresh 15m", status);
+  snprintf(mode, sizeof(mode), " Modo %s", displayStatus(status));
   addCardText(lines, &count, mode);
   addRule(lines, &count);
-  addSectionTitle(lines, &count, "Weather");
+  addSectionTitle(lines, &count, "Clima");
   if (dashboard->weather.available) {
-    addMetric(lines, &count, "RAIN", dashboard->weather.precipitation_probability, 100, "%");
+    addMetric(lines, &count, "CHUVA", dashboard->weather.precipitation_probability, 100, "%");
     char weather_line[64];
-    snprintf(weather_line, sizeof(weather_line), " Now %dC H%d L%d %s", dashboard->weather.temperature_c,
-             dashboard->weather.high_c, dashboard->weather.low_c, dashboard->weather.condition_label);
+    snprintf(weather_line, sizeof(weather_line), " Agora %dC MAX%d MIN%d %s", dashboard->weather.temperature_c,
+             dashboard->weather.high_c, dashboard->weather.low_c, displayCondition(dashboard->weather.condition_label));
     addCardText(lines, &count, weather_line);
   } else {
-    addCardText(lines, &count, " Weather unavailable");
+    addCardText(lines, &count, " Clima indisponivel");
   }
   addRule(lines, &count);
   addSectionTitle(lines, &count, "Agenda");
   if (!dashboard->agenda_available) {
-    addCardText(lines, &count, " Agenda unavailable");
+    addCardText(lines, &count, " Agenda indisponivel");
   } else if (dashboard->agenda_event_count == 0) {
-    addCardText(lines, &count, " No upcoming events");
+    addCardText(lines, &count, " Nenhum evento");
   } else {
     const int shown = dashboard->agenda_event_count > 4 ? 4 : dashboard->agenda_event_count;
     for (int i = 0; i < shown; i++) {
@@ -654,7 +681,7 @@ int renderLines(const Dashboard* dashboard, const char* status, char lines[][96]
   }
   addRule(lines, &count);
   for (int i = 0; i < dashboard->list_count; i++) addList(lines, &count, &dashboard->lists[i]);
-  addCardText(lines, &count, " Telegram updates lists");
+  addCardText(lines, &count, " Atualize pelo Telegram");
   addRule(lines, &count);
   return count;
 }
@@ -944,8 +971,9 @@ void invertCanvas(Canvas* canvas) {
 
 const char* displayListTitle(const List* list) {
   if (!list) return "";
-  if (strcmp(list->key, "todo") == 0) return "CHORES";
-  if (strcmp(list->key, "grocery") == 0) return "GROCERY";
+  if (strcmp(list->key, "todo") == 0) return "TAREFAS";
+  if (strcmp(list->key, "grocery") == 0) return "COMPRAS";
+  if (strcmp(list->key, "notes") == 0) return "NOTAS";
   return list->title[0] ? list->title : list->key;
 }
 
@@ -979,7 +1007,7 @@ void agendaEventDateTime(const AgendaEvent* event, char* out, size_t out_size) {
     date_part[5] = '\0';
   }
   if (event->all_day) {
-    snprintf(out, out_size, "%s ALL DAY", date_part);
+    snprintf(out, out_size, "%s DIA TODO", date_part);
     return;
   }
   char clock[6] = "--:--";
@@ -1118,7 +1146,7 @@ void drawWeatherBar(Canvas* canvas, const Dashboard* dashboard, const char* stat
     // through it. Dropping to 4 and starting two rows lower clears the rule instead of
     // just drawing a smaller version of the same overlap.
     drawTextClipped(canvas, temp_x, shell_y + 24, text_w, temp, 4, 0);
-    drawTextClipped(canvas, temp_x, shell_y + 62, 200, weather.condition_label, 2, 0);
+    drawTextClipped(canvas, temp_x, shell_y + 62, 200, displayCondition(weather.condition_label), 2, 0);
 
     // Icon+value stat cluster (high/low/rain chance), so the numbers don't read as bare,
     // unlabeled letters - each one sits right next to the icon that explains it.
@@ -1138,7 +1166,7 @@ void drawWeatherBar(Canvas* canvas, const Dashboard* dashboard, const char* stat
       drawTextClipped(canvas, stats_x + 138, shell_y + 36, 90, rain, 3, 0);
     }
   } else {
-    drawTextClipped(canvas, shell_x + 28, shell_y + 24, text_w, "WEATHER N/A", 4, 0);
+    drawTextClipped(canvas, shell_x + 28, shell_y + 24, text_w, "CLIMA INDISP.", 4, 0);
   }
 
   drawExitAndLockButtons(canvas, canvas->width, canvas->height);
@@ -1239,11 +1267,11 @@ void drawAgendaTile(Canvas* canvas, int x, int y, int w, int h, const Dashboard*
   hudRail(canvas, x + 10, x + w - 10, y + 52, 0);
 
   if (!dashboard->agenda_available) {
-    drawTextCentered(canvas, x + w / 2, y + h / 2 - 12, w - 24, "AGENDA N/A", 3, 0);
+    drawTextCentered(canvas, x + w / 2, y + h / 2 - 12, w - 24, "AGENDA INDISPONIVEL", 3, 0);
     return;
   }
   if (dashboard->agenda_event_count == 0) {
-    drawTextCentered(canvas, x + w / 2, y + h / 2 - 12, w - 24, "NO EVENTS", 3, 0);
+    drawTextCentered(canvas, x + w / 2, y + h / 2 - 12, w - 24, "NENHUM EVENTO", 3, 0);
     return;
   }
 
@@ -1295,7 +1323,7 @@ void drawListCard(Canvas* canvas, int x, int y, int w, int h, const List* list, 
       snprintf(row, sizeof(row), "%s %.52s", list->items[0].done ? "[X]" : "[ ]", item_text);
       drawTextClipped(canvas, x + 18, y + 66, w - 36, row, 2, 0);
     } else {
-      drawTextCentered(canvas, x + w / 2, y + 66, w - 36, "NO ITEMS", 2, 0);
+      drawTextCentered(canvas, x + w / 2, y + 66, w - 36, "LISTA VAZIA", 2, 0);
     }
     return;
   }
@@ -1318,12 +1346,12 @@ void drawListCard(Canvas* canvas, int x, int y, int w, int h, const List* list, 
   }
   if (list->item_count > shown && h >= 190) {
     char more[48];
-    snprintf(more, sizeof(more), "+%d MORE", list->item_count - shown);
+    snprintf(more, sizeof(more), "+%d ITENS", list->item_count - shown);
     drawTextClipped(canvas, x + 18, y + h - 68, 180, more, 3, 0);
   }
   if (h >= 160) {
     const int hint_scale = h < 172 ? 2 : 3;
-    drawTextCentered(canvas, x + w / 2, y + h - 34, w - 24, "[ TAP TO OPEN ]", hint_scale, 0);
+    drawTextCentered(canvas, x + w / 2, y + h - 34, w - 24, "[ TOQUE AQUI ]", hint_scale, 0);
   }
 }
 
@@ -1354,11 +1382,11 @@ void drawSubHeader(Canvas* canvas, int shell_x, int y, int shell_w, const char* 
   Rect back_rect = {shell_x + shell_w - 136, y + 14, 104, 52};
   Rect home_rect = {back_rect.x - 116, y + 14, 104, 52};
   hudFrame(canvas, home_rect.x, home_rect.y, home_rect.w, home_rect.h, kHudEdge, kHudCornerSmallButton, kHudNotchSmallButton, 0);
-  drawTextCentered(canvas, home_rect.x + home_rect.w / 2, home_rect.y + 16, home_rect.w - 12, "HOME", 2, 0);
+  drawTextCentered(canvas, home_rect.x + home_rect.w / 2, home_rect.y + 16, home_rect.w - 12, "INICIO", 2, 0);
   addTouchRegion(home_rect, kTouchHome, -1, -1, "", 0);
 
   hudFrame(canvas, back_rect.x, back_rect.y, back_rect.w, back_rect.h, kHudEdge, kHudCornerSmallButton, kHudNotchSmallButton, 0);
-  drawTextCentered(canvas, back_rect.x + back_rect.w / 2, back_rect.y + 16, back_rect.w - 12, "BACK", 2, 0);
+  drawTextCentered(canvas, back_rect.x + back_rect.w / 2, back_rect.y + 16, back_rect.w - 12, "VOLTAR", 2, 0);
   addTouchRegion(back_rect, kTouchBack, -1, -1, "", 0);
 }
 
@@ -1477,7 +1505,7 @@ void drawExitAndLockButtons(Canvas* canvas, int width, int height) {
   const Rect exit_rect = exitButtonRectForScreen(width, height);
   const Rect exit_hit_rect = {exit_rect.x - 20, kKindleStatusBarHeight, exit_rect.w + 40, exit_rect.y - kKindleStatusBarHeight + exit_rect.h + 20};
   hudFrame(canvas, exit_rect.x, exit_rect.y, exit_rect.w, exit_rect.h, kHudEdge, kHudCornerButton, kHudNotchButton, 0);
-  drawTextCentered(canvas, exit_rect.x + exit_rect.w / 2, exit_rect.y + 34, exit_rect.w - 16, "EXIT", 3, 0);
+  drawTextCentered(canvas, exit_rect.x + exit_rect.w / 2, exit_rect.y + 34, exit_rect.w - 16, "SAIR", 3, 0);
   addTouchRegion(exit_hit_rect, kTouchExit, -1, -1, "", 0);
   addTouchRegion(exit_rect, kTouchExit, -1, -1, "", 0);
 
@@ -2645,9 +2673,9 @@ void renderPayload(const char* payload, const char* status, const char* dump_pgm
   if (!parseDashboard(payload, &dashboard)) {
     int count = 0;
     addRule(lines, &count);
-    addCardText(lines, &count, " KINDLE DASHBOARD");
-    addCardText(lines, &count, " Dashboard unavailable");
-    addCardText(lines, &count, " Could not parse dashboard data");
+    addCardText(lines, &count, " PAINEL KINDLE");
+    addCardText(lines, &count, " Painel indisponivel");
+    addCardText(lines, &count, " Dados do painel invalidos");
     addRule(lines, &count);
     renderToEips(lines, count);
     fprintf(stderr, "timing=render status=parse_failed ms=%lld\n", monotonicMs() - started);
@@ -2870,9 +2898,9 @@ int main(int argc, char** argv) {
         char lines[kMaxRows][96];
         int count = 0;
         addRule(lines, &count);
-        addCardText(lines, &count, " KINDLE DASHBOARD");
-        addCardText(lines, &count, " Quiet hours");
-        addCardText(lines, &count, " Cache unavailable");
+        addCardText(lines, &count, " PAINEL KINDLE");
+        addCardText(lines, &count, " Horario de silencio");
+        addCardText(lines, &count, " Cache indisponivel");
         addRule(lines, &count);
         renderToEips(lines, count);
       }
@@ -2898,9 +2926,9 @@ int main(int argc, char** argv) {
       char lines[kMaxRows][96];
       int count = 0;
       addRule(lines, &count);
-      addCardText(lines, &count, " KINDLE DASHBOARD");
-      addCardText(lines, &count, " Dashboard unavailable");
-      addCardText(lines, &count, " Check Wi-Fi or refresh later");
+      addCardText(lines, &count, " PAINEL KINDLE");
+      addCardText(lines, &count, " Painel indisponivel");
+      addCardText(lines, &count, " Verifique o Wi-Fi ou tente depois");
       addRule(lines, &count);
       renderToEips(lines, count);
     }

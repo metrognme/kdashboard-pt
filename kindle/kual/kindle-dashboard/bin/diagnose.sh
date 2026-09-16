@@ -45,13 +45,13 @@ if [ -x "$NATIVE_APP" ]; then
   fi
 else
   write_log "missing native executable"
-  say "Dashboard native missing"
+  say "Programa do painel ausente"
   exit 0
 fi
 
 if [ -z "$DASHBOARD_DATA_URL" ]; then
   write_log "missing DASHBOARD_DATA_URL; create /mnt/us/extensions/kindle-dashboard/config.sh"
-  say "Dashboard config missing"
+  say "Falta o config.sh do painel"
   exit 1
 fi
 
@@ -87,9 +87,9 @@ rm -f "$RUN_APP"
 
 if [ "$status" -eq 0 ] && [ -s "$CACHE" ]; then
   write_log "ok cache bytes=$(wc -c < "$CACHE" 2>/dev/null)"
-  say "Dashboard diag OK"
+  say "Diagnostico OK"
   exit 0
 fi
 
-say "Dashboard diag failed"
+say "Diagnostico falhou"
 exit 0

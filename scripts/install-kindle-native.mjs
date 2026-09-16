@@ -9,7 +9,7 @@ const eventsUrl = process.env.DASHBOARD_EVENTS_URL || "";
 const toggleUrl = process.env.DASHBOARD_TOGGLE_URL || "";
 const readToken = process.env.DASHBOARD_READ_TOKEN || "";
 const toggleToken = process.env.DASHBOARD_TOGGLE_TOKEN || "";
-const title = process.env.DASHBOARD_TITLE || "Kindle Dashboard";
+const title = process.env.DASHBOARD_TITLE || "Painel Kindle";
 const archive = path.resolve("kindle/native/build/kindle-dashboard-kual.tar.gz");
 const volume = path.resolve(volumeArg || "/Volumes/Kindle");
 const extensionsDir = path.join(volume, "extensions");
@@ -21,20 +21,20 @@ const cacheFile = path.join(documentsDir, "kindle-dashboard-data.json");
 const existingConfig = existsSync(targetConfig) ? readFileSync(targetConfig, "utf8") : "";
 
 if (!existsSync(archive)) {
-  console.error(`Missing package: ${archive}`);
-  console.error("Build it with: make -C kindle/native extension-zig ZIG=/path/to/zig");
+  console.error(`Pacote nao encontrado: ${archive}`);
+  console.error("Gere o pacote com: make -C kindle/native extension-zig");
   process.exit(1);
 }
 
 if (!existsSync(volume)) {
-  console.error(`Kindle volume not found: ${volume}`);
+  console.error(`Kindle nao encontrado em: ${volume}`);
   process.exit(1);
 }
 
 if (!force && !isLikelyKindleVolume(volume)) {
-  console.error(`Refusing to install: ${volume} does not look like a mounted Kindle volume.`);
-  console.error("Expected a Kindle-like volume name or an existing documents/ directory.");
-  console.error("Rerun with --force only after manually confirming the target path.");
+  console.error(`Instalacao cancelada: ${volume} nao parece ser um Kindle conectado.`);
+  console.error("Esperado um volume com \"kindle\" no nome ou com uma pasta documents/.");
+  console.error("Use --force somente depois de confirmar o caminho manualmente.");
   process.exit(1);
 }
 
@@ -61,7 +61,7 @@ rmSync(path.join(documentsDir, "._kindle-dashboard-launch.sh"), { force: true })
 
 if (existingConfig) {
   writeFileSync(targetConfig, existingConfig);
-  console.log(`Preserved existing dashboard config at ${targetConfig}`);
+  console.log(`config.sh existente mantido em ${targetConfig}`);
 } else if (dataUrl || eventsUrl || toggleUrl) {
   writeFileSync(
     targetConfig,
@@ -80,7 +80,7 @@ if (existingConfig) {
       ""
     ].join("\n")
   );
-  console.log(`Created dashboard config at ${targetConfig}`);
+  console.log(`config.sh criado em ${targetConfig}`);
 }
 
 if (dataUrl) {
@@ -95,54 +95,54 @@ if (dataUrl) {
     JSON.parse(payload);
     writeFileSync(cacheFile, payload);
     rmSync(path.join(documentsDir, "._kindle-dashboard-data.json"), { force: true });
-    console.log(`Seeded dashboard cache at ${cacheFile}`);
+    console.log(`Dados iniciais do painel salvos em ${cacheFile}`);
   } catch (error) {
-    console.warn(`Could not seed dashboard cache: ${error.message}`);
+    console.warn(`Nao foi possivel baixar os dados iniciais: ${error.message}`);
   }
 } else {
-  console.warn("Skipping cache seed because DASHBOARD_DATA_URL is not set.");
+  console.warn("Dados iniciais nao baixados: DASHBOARD_DATA_URL nao foi definida.");
 }
 
 writeFileSync(
   path.join(volume, "KINDLE_DASHBOARD_NATIVE_INSTALLED.txt"),
   [
-    "Kindle native dashboard installed.",
+    "Painel Kindle instalado.",
     "",
-    "Extension path:",
+    "Pasta da extensao:",
     "  /mnt/us/extensions/kindle-dashboard",
     "",
-    "Manual/upstart launcher:",
+    "Inicializador manual/upstart:",
     "  /mnt/us/documents/kindle-dashboard-launch.sh",
-    "  (theme follows DARK_MODE in config.sh; the KUAL menu below overrides it per launch)",
+    "  (o tema segue DARK_MODE no config.sh; o menu do KUAL abaixo sobrescreve por execucao)",
     "",
-    "KUAL menu:",
-    "  Kindle Dashboard -> Start Dashboard (Light)",
-    "  Kindle Dashboard -> Start Dashboard (Dark)",
-    "  Kindle Dashboard -> Refresh Once (Light)",
-    "  Kindle Dashboard -> Refresh Once (Dark)",
-    "  Kindle Dashboard -> Stop Dashboard",
+    "Menu do KUAL:",
+    "  Painel Kindle -> Iniciar painel (claro)",
+    "  Painel Kindle -> Iniciar painel (escuro)",
+    "  Painel Kindle -> Atualizar uma vez (claro)",
+    "  Painel Kindle -> Atualizar uma vez (escuro)",
+    "  Painel Kindle -> Parar painel",
     "",
-    "Menu ping log on device:",
+    "Log do menu no aparelho:",
     "  /mnt/us/documents/kindle-dashboard-menu-ping.log",
     "",
-    "Proof render artifacts:",
+    "Arquivos de prova de renderizacao:",
     "  /mnt/us/documents/kindle-dashboard-proof.log",
     "  /mnt/us/documents/kindle-dashboard-last-render.pgm",
     "",
-    "Diagnostic log on device:",
+    "Log de diagnostico no aparelho:",
     "  /mnt/us/documents/kindle-dashboard-diagnose.log",
     "",
-    "Seeded/offline data cache:",
+    "Cache de dados (offline):",
     "  /mnt/us/documents/kindle-dashboard-data.json",
     "",
-    "Data endpoint:",
-    dataUrl ? `  ${dataUrl}` : "  not seeded; set DASHBOARD_DATA_URL before install to seed the cache",
+    "URL de dados:",
+    dataUrl ? `  ${dataUrl}` : "  nao definida; defina DASHBOARD_DATA_URL antes de instalar para baixar os dados iniciais",
     ""
   ].join("\n")
 );
 
 execFileSync("sync", [], { stdio: "inherit" });
-console.log(`Installed Kindle Dashboard extension to ${targetDir}`);
+console.log(`Extensao do Painel Kindle instalada em ${targetDir}`);
 
 function isLikelyKindleVolume(volumePath) {
   const name = path.basename(volumePath).toLowerCase();

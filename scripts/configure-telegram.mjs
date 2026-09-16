@@ -14,7 +14,7 @@ const webhookUrl =
   (baseUrl ? `${baseUrl.replace(/\/+$/, "")}/functions/telegram-webhook` : "");
 
 if (!botToken || !chatId || !webhookUrl) {
-  console.error("Usage: npm run telegram:configure -- --bot-token <token> --chat-id <chat-id> --webhook-url <url>");
+  console.error("Uso: npm run telegram:configure -- --bot-token <token> --chat-id <chat-id> --webhook-url <url>");
   process.exit(1);
 }
 
@@ -29,8 +29,8 @@ if (!response.ok) {
   process.exit(1);
 }
 
-console.log(`Telegram webhook registered: ${webhookUrl}`);
-console.log(`Allowed chat ID set: ${chatId}`);
+console.log(`Webhook do Telegram registrado: ${webhookUrl}`);
+console.log(`Chat autorizado: ${chatId}`);
 
 function setSecret(key, value) {
   try {

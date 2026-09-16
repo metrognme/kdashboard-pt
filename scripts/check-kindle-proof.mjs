@@ -21,11 +21,11 @@ function fail(message) {
   process.exit(1);
 }
 
-if (!existsSync(volume)) fail(`Kindle volume not found: ${volume}`);
+if (!existsSync(volume)) fail(`Kindle nao encontrado em: ${volume}`);
 if (!existsSync(pgm)) {
   fail([
-    `Missing saved render: ${pgm}`,
-    "Eject/unplug Kindle, run KUAL -> Kindle Dashboard -> Render Proof, then mount again."
+    `Renderizacao salva nao encontrada: ${pgm}`,
+    "Ejete o Kindle, rode uma atualizacao pelo KUAL (Painel Kindle) e conecte de novo."
   ].join("\n"));
 }
 
@@ -35,15 +35,15 @@ const diagnoseText = readIfPresent(diagnoseLog);
 const combined = [proofText, nativeText, diagnoseText].join("\n");
 
 if (!/render=(framebuffer ok|fbink ok)/.test(combined)) {
-  fail("Saved PGM exists, but logs do not prove framebuffer/fbink rendering succeeded.");
+  fail("O PGM existe, mas os logs nao comprovam que a renderizacao na tela funcionou.");
 }
 
 if (!/saved_pgm_bytes=|render=save-pgm /.test(combined)) {
-  fail("Logs do not show the saved PGM was produced by the native renderer.");
+  fail("Os logs nao mostram que o PGM foi gerado pelo programa do painel.");
 }
 
 mkdirSync(outDir, { recursive: true });
 execFileSync("sips", ["-s", "format", "png", pgm, "--out", png], { stdio: "ignore" });
 
-console.log(`Proof OK: ${pgm}`);
-console.log(`Preview PNG: ${png}`);
+console.log(`Prova OK: ${pgm}`);
+console.log(`PNG de previa: ${png}`);
