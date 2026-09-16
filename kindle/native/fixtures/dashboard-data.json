@@ -1,42 +1,120 @@
 {
   "ok": true,
-  "generated_at": "2026-06-28T08:30:00.000Z",
+  "generated_at": "2026-09-11T08:30:00.000Z",
   "version": "fixture",
-  "health": {
-    "date": "2026-06-28",
-    "steps": 8432,
-    "calories": 1675,
-    "protein_g": 72,
-    "steps_target": 10000,
-    "calories_target": 2000,
-    "steps_unit": "steps",
-    "calories_unit": "kcal",
-    "synced_at": "2026-06-28T08:25:00.000Z"
+  "weather": {
+    "available": true,
+    "fetched_at": "2026-09-11T08:25:00.000Z",
+    "temperature_c": 24,
+    "feels_like_c": 26,
+    "condition_label": "CLOUDY",
+    "precipitation_probability": 62,
+    "precipitation_mm_today": 4,
+    "high_c": 28,
+    "low_c": 19,
+    "wind_kph": 14
   },
-  "challenge": {
-    "date": "2026-06-28",
-    "water_l": 1,
-    "water_target_l": 3,
-    "sleep_hours": 7.5,
-    "sleep_target_hours": 8,
-    "workouts": 1,
-    "workout_target": 2
+  "agenda": {
+    "available": true,
+    "fetched_at": "2026-09-11T08:25:00.000Z",
+    "events": [
+      {
+        "uid": "ev-1",
+        "title": "TEAM STANDUP",
+        "start": "2026-09-11T15:00:00+05:30",
+        "end": "2026-09-11T15:30:00+05:30",
+        "all_day": false,
+        "location": "ROOM 2"
+      },
+      {
+        "uid": "ev-2",
+        "title": "DENTIST APPOINTMENT",
+        "start": "2026-09-11T19:30:00+05:30",
+        "end": "2026-09-11T20:30:00+05:30",
+        "all_day": false,
+        "location": null
+      },
+      {
+        "uid": "ev-3",
+        "title": "BILL DUE - ELECTRICITY",
+        "start": "2026-09-12T00:00:00Z",
+        "end": null,
+        "all_day": true,
+        "location": null
+      },
+      {
+        "uid": "ev-4",
+        "title": "QUARTERLY REVIEW MEETING",
+        "start": "2026-10-15T14:00:00+05:30",
+        "end": "2026-10-15T15:00:00+05:30",
+        "all_day": false,
+        "location": null
+      },
+      {
+        "uid": "ev-5",
+        "title": "CONFERENCE - KEYNOTE",
+        "start": "2026-11-03T09:00:00+05:30",
+        "end": "2026-11-03T10:30:00+05:30",
+        "all_day": false,
+        "location": "HALL A"
+      },
+      {
+        "uid": "ev-6#2027-04-25",
+        "title": "BIRTHDAY - ANA",
+        "start": "2027-04-25T00:00:00Z",
+        "end": null,
+        "all_day": true,
+        "location": null
+      }
+    ]
   },
   "lists": [
     {
       "key": "todo",
       "title": "Chores",
       "items": [
-        { "id": "1", "text": "Read paper notes", "done": false, "updated_at": "2026-06-28T08:00:00.000Z" },
-        { "id": "2", "text": "Charge Kindle", "done": true, "updated_at": "2026-06-28T07:00:00.000Z" }
+        {
+          "id": "1",
+          "text": "READ PAPER NOTES",
+          "done": false,
+          "updated_at": "2026-09-11T08:00:00.000Z"
+        },
+        {
+          "id": "2",
+          "text": "CHARGE KINDLE",
+          "done": true,
+          "updated_at": "2026-09-11T07:00:00.000Z"
+        }
       ]
     },
     {
       "key": "grocery",
       "title": "Grocery",
       "items": [
-        { "id": "3", "text": "Milk", "done": false, "updated_at": "2026-06-28T08:10:00.000Z" },
-        { "id": "4", "text": "Eggs", "done": false, "updated_at": "2026-06-28T08:11:00.000Z" }
+        {
+          "id": "3",
+          "text": "MILK",
+          "done": false,
+          "updated_at": "2026-09-11T08:10:00.000Z"
+        },
+        {
+          "id": "4",
+          "text": "EGGS",
+          "done": false,
+          "updated_at": "2026-09-11T08:11:00.000Z"
+        }
+      ]
+    },
+    {
+      "key": "notes",
+      "title": "Notes",
+      "items": [
+        {
+          "id": "5",
+          "text": "CALL DENTIST BACK",
+          "done": false,
+          "updated_at": "2026-09-11T08:12:00.000Z"
+        }
       ]
     }
   ]

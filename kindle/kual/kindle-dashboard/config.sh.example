@@ -7,10 +7,16 @@ DASHBOARD_TOGGLE_URL="https://your-project.insforge.app/functions/kindle-dashboa
 DASHBOARD_READ_TOKEN="replace-with-your-generated-read-token"
 DASHBOARD_TOGGLE_TOKEN="replace-with-your-generated-toggle-token"
 
+# Text shown in the dashboard header (rendered in uppercase). Put your name,
+# your family's, or anything else here.
+DASHBOARD_TITLE="Kindle Dashboard"
+
 # Always-on defaults. Override only if you know you want a different mode.
-INTERVAL="3600"
+INTERVAL="300"
 DASHBOARD_KEEP_AWAKE="1"
 DASHBOARD_SLEEP_WINDOW="off"
 # Optional: leave unset to use the Kindle's own timezone.
-# DASHBOARD_TIMEZONE="Asia/Kolkata"
-INVERT_IMAGES="0"
+# DASHBOARD_TIMEZONE="America/New_York"
+# Dark mode: 1 renders the whole dashboard white-on-black. The KUAL menu's
+# "Dark" entries force it on for that launch regardless of this setting.
+DARK_MODE="0"

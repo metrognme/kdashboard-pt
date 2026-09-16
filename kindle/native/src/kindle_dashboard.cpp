@@ -23,15 +23,8 @@ const char* kDefaultUrl = "";
 const char* kDefaultEventsUrl = "";
 const char* kDefaultToggleUrl = "";
 const char* kDefaultCache = "/mnt/us/documents/kindle-dashboard-data.json";
-const char* kMealCoverPath = "/mnt/us/extensions/kindle-dashboard/assets/meal-planner-cover.pgm";
-const char* kMealCoverLocalPath = "kindle/kual/kindle-dashboard/assets/meal-planner-cover.pgm";
-const char* kChallengeCoverPath = "/mnt/us/extensions/kindle-dashboard/assets/challenge-75-day.pgm";
-const char* kChallengeCoverLocalPath = "kindle/kual/kindle-dashboard/assets/challenge-75-day.pgm";
-const char* kProfileCardPath = "/mnt/us/extensions/kindle-dashboard/assets/profile-placeholder.pgm";
-const char* kProfileCardLocalPath = "kindle/kual/kindle-dashboard/assets/profile-placeholder.pgm";
-const char* kRecipeAssetsPath = "/mnt/us/extensions/kindle-dashboard/assets/recipes";
-const char* kRecipeAssetsLocalPath = "kindle/kual/kindle-dashboard/assets/recipes";
-const int kDefaultIntervalSeconds = 3600;
+const char* kDefaultPhotoPath = "/mnt/us/extensions/kindle-dashboard/assets/profile.pgm";
+const int kDefaultIntervalSeconds = 300;
 const char* kDefaultSleepWindow = "off";
 const long kMaxDashboardPayloadBytes = 512 * 1024;
 const int kScreenColumns = 40;
@@ -39,7 +32,7 @@ const int kMaxRows = 28;
 const int kCardInnerWidth = 36;
 const int kMaxLists = 4;
 const int kMaxItems = 16;
-const int kMaxRecipes = 12;
+const int kMaxAgendaEvents = 8;
 const int kBitmapFallbackWidth = 760;
 const int kBitmapFallbackHeight = 1024;
 const int kKindleStatusBarHeight = 66;
@@ -50,14 +43,23 @@ volatile sig_atomic_t g_manual_fetch_refresh = 0;
 int g_last_screen_width = kBitmapFallbackWidth;
 int g_last_screen_height = kBitmapFallbackHeight;
 int g_active_list = -1;
-int g_active_meal_planner = 0;
-int g_active_recipes = 0;
-int g_active_recipe = -1;
-int g_active_recipe_library = 0;
-int g_active_recipe_return_meal_planner = 0;
-int g_active_challenge = 0;
-int g_invert_images = 0;
-int g_day_offset = 0;
+char g_photo_path[256] = "";
+// Header title. The bitmap font is uppercase-only, so --title is upper-cased on the way in.
+char g_title[64] = "KINDLE DASHBOARD";
+// Dark mode. Every draw call still works in the light palette (ink 0 on paper
+// 255) and the finished canvas is inverted once, in drawCurrentDashboard(),
+// rather than threading an ink/paper colour through ~120 call sites. Both give
+// the same pixels for a two-tone design, and the single inversion cannot miss a
+// call site the way a hand-swapped palette can. The photo tile is the one thing
+// pre-inverted on the way in, so it survives the final flip as a photo instead
+// of a negative - which is what the old --invert-images flag was reaching for.
+int g_dark_mode = 0;
+// Locks out every touch except the lock button itself, until it is tapped
+// again - so the dashboard can be carried around or wiped clean without an
+// incidental tap opening a list or exiting to the Kindle home screen. Always
+// starts unlocked: there is no reason for this to survive a relaunch, and a
+// relaunch redraws the whole screen from scratch anyway.
+int g_screen_locked = 0;
 
 enum TouchAction {
   kTouchNone = 0,
@@ -65,15 +67,17 @@ enum TouchAction {
   kTouchBack = 2,
   kTouchOpenList = 3,
   kTouchToggleItem = 4,
-  kTouchOpenMealPlanner = 5,
-  kTouchOpenRecipe = 6,
-  kTouchOpenRecipes = 7,
   kTouchHome = 8,
-  kTouchOpenChallenge = 9,
-  kTouchOpenMealPlanRecipe = 10,
-  kTouchPreviousDay = 11,
-  kTouchNextDay = 12,
-  kTouchToday = 13
+  // Locks the screen; only ever reachable by an actual touchscreen tap on the padlock
+  // button, since applyTouchWithDebounce() returns before dispatching anything else while
+  // g_screen_locked is set - so this action always means "was unlocked, now locking."
+  kTouchToggleLock = 9,
+  // The other half of the pair. Never comes from the touchscreen at all - set only by
+  // pollPowerButtonUnlock() on a physical power-button press, and only while locked. Kept
+  // in this enum (and dispatched through the same g_pending_action plumbing) purely to
+  // reuse the existing main-loop "an action is pending, handle it and redraw" mechanism,
+  // not because it is a touch.
+  kTouchHardwareUnlock = 10
 };
 
 struct Item {
@@ -89,54 +93,34 @@ struct List {
   int item_count;
 };
 
-const int kMaxRecipeIngredients = 8;
-
-struct RecipeIngredient {
-  const char* name;
-  const char* amount;
+struct Weather {
+  int available;
+  int temperature_c;
+  int feels_like_c;
+  int high_c;
+  int low_c;
+  int precipitation_probability;
+  int wind_kph;
+  char condition_label[16];
 };
 
-struct RecipeIngredientRecord {
-  char name[64];
-  char amount[32];
-};
-
-struct RecipeRecord {
-  char id[48];
+struct AgendaEvent {
+  char uid[48];
   char title[64];
-  char instructions[160];
-  RecipeIngredientRecord ingredients[kMaxRecipeIngredients];
-  int ingredient_count;
-  int calories;
-  int carbs;
-  int fat;
-  int protein;
-  int rating_tenths;
+  char start[32];
+  char location[64];
+  int all_day;
 };
 
 struct Dashboard {
   char generated_at[40];
   char version[32];
-  int steps;
-  int calories;
-  int protein_g;
-  int challenge_day;
-  int water_tenths;
-  int water_target_tenths;
-  int sleep_tenths;
-  int sleep_target_tenths;
-  int workouts;
-  int workout_target;
-  int steps_target;
-  int calories_target;
-  char steps_unit[16];
-  char calories_unit[16];
+  Weather weather;
+  AgendaEvent agenda_events[kMaxAgendaEvents];
+  int agenda_event_count;
+  int agenda_available;
   List lists[kMaxLists];
   int list_count;
-  RecipeRecord recipes[kMaxRecipes];
-  int recipe_count;
-  int meal_plan_recipe_indices[kMaxRecipes];
-  int meal_plan_count;
 };
 
 struct Options {
@@ -150,13 +134,15 @@ struct Options {
   char view[32];
   char dump_pgm[256];
   char save_pgm[256];
+  char photo_path[256];
+  char title[64];
   int dump_width;
   int dump_height;
   int interval;
   int sleep_start_minute;
   int sleep_end_minute;
   int once;
-  int invert_images;
+  int dark;
 };
 
 struct Canvas {
@@ -172,14 +158,6 @@ struct Rect {
   int h;
 };
 
-struct CachedPgm {
-  char primary_path[192];
-  char fallback_path[192];
-  unsigned char* pixels;
-  int width;
-  int height;
-};
-
 struct TouchRegion {
   Rect rect;
   TouchAction action;
@@ -188,87 +166,6 @@ struct TouchRegion {
   char item_id[48];
   int item_done;
 };
-
-struct MealPlanEntry {
-  const char* meal;
-  const char* title;
-  const char* time;
-  const char* recipe;
-  const char* photo_path;
-  const char* photo_fallback_path;
-  RecipeIngredient ingredients[kMaxRecipeIngredients];
-  int ingredient_count;
-  const char* steps;
-  int calories;
-  int carbs;
-  int fat;
-  int protein;
-};
-
-const MealPlanEntry kMealPlan[] = {
-  {
-    "BREAKFAST",
-    "SAVORY OATS",
-    "8:30 AM",
-    "OATS + EGG + GREENS",
-    kMealCoverPath,
-    kMealCoverLocalPath,
-    {
-      {"OATS", "1/2 CUP"},
-      {"EGG", "1"},
-      {"SPINACH", "1 CUP"},
-      {"LEMON", "1 WEDGE"}
-    },
-    4,
-    "SIMMER OATS. FOLD GREENS. TOP WITH EGG.",
-    410,
-    48,
-    14,
-    22
-  },
-  {
-    "LUNCH",
-    "CHICKPEA WRAP",
-    "1:00 PM",
-    "CHICKPEA + PESTO WRAP",
-    kMealCoverPath,
-    kMealCoverLocalPath,
-    {
-      {"CHICKPEAS", "3/4 CUP"},
-      {"PESTO", "1 TBSP"},
-      {"TORTILLA", "1 LARGE"},
-      {"CUCUMBER", "1/2 CUP"}
-    },
-    4,
-    "MASH CHICKPEAS. SPREAD PESTO. ROLL TIGHT.",
-    520,
-    62,
-    18,
-    24
-  },
-  {
-    "DINNER",
-    "PIZZA TOAST",
-    "7:30 PM",
-    "MELTY PIZZA TOAST",
-    kMealCoverPath,
-    kMealCoverLocalPath,
-    {
-      {"BREAD", "2 SLICES"},
-      {"SAUCE", "1/4 CUP"},
-      {"MOZZARELLA", "2 OZ"},
-      {"BASIL", "6 LEAVES"}
-    },
-    4,
-    "SAUCE BREAD. ADD TOPPINGS. TOAST UNTIL MELTY.",
-    610,
-    58,
-    26,
-    31
-  }
-};
-
-const int kMealPlanCount = static_cast<int>(sizeof(kMealPlan) / sizeof(kMealPlan[0]));
 
 const int kMaxTouchRegions = 32;
 TouchRegion g_touch_regions[kMaxTouchRegions];
@@ -282,13 +179,30 @@ int g_pending_touch_x = -1;
 int g_pending_touch_y = -1;
 Rect g_pending_touch_rect = {0, 0, 0, 0};
 int g_pending_touch_rect_valid = 0;
-CachedPgm g_pgm_cache[32];
-int g_pgm_cache_count = 0;
 
+// Frontlight power management: the device previously stayed lit the entire
+// time the dashboard ran (preventScreenSaver just stops the OS screensaver,
+// it never controlled the frontlight). We manage the frontlight ourselves so
+// it is on only around an actual touch, not for periodic background
+// refreshes. -1 means "not yet captured" (before the first startup read).
+// volatile: written by the main thread and by the touch-watcher thread
+// (turnOffFrontlightIfIdle), so neither side may cache them in a register.
+volatile int g_frontlight_saved_level = -1;
+volatile int g_frontlight_is_on = 0;
+const int kFrontlightFallbackLevel = 10;
+const long long kFrontlightIdleTimeoutMs = 20000;
+void wakeFrontlightOnTouch();  // defined near returnToKindleHome(), used by applyTouchWithDebounce() below
+void stopTouchWatcher();       // defined with startTouchWatcher(); must run before any frontlight restore
+
+// CLOCK_MONOTONIC, not gettimeofday(): this clock gates the touch debounce, so a wall-clock
+// correction (NTP after a wake from sleep, RTC drift) jumping backwards would make every
+// elapsed-time check go negative and silently swallow input until wall time caught back up.
+// Every caller uses this for deltas only, never for a real date, so monotonic is correct
+// everywhere it is used.
 long long monotonicMs() {
-  timeval tv;
-  gettimeofday(&tv, NULL);
-  return static_cast<long long>(tv.tv_sec) * 1000LL + static_cast<long long>(tv.tv_usec / 1000);
+  timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return static_cast<long long>(ts.tv_sec) * 1000LL + static_cast<long long>(ts.tv_nsec / 1000000);
 }
 
 void copyText(char* dest, size_t size, const char* source) {
@@ -405,13 +319,6 @@ int extractInt(const char* start, const char* end, const char* key, int fallback
   return static_cast<int>(strtol(value, NULL, 10));
 }
 
-int extractScaledInt(const char* start, const char* end, const char* key, int scale, int fallback) {
-  const char* value = findKeyInRange(start, end, key);
-  if (!value) return fallback;
-  const double parsed = strtod(value, NULL);
-  return static_cast<int>(parsed * scale + (parsed >= 0 ? 0.5 : -0.5));
-}
-
 int extractBool(const char* start, const char* end, const char* key, int fallback) {
   const char* value = findKeyInRange(start, end, key);
   if (!value) return fallback;
@@ -469,113 +376,65 @@ int parseItems(const char* list_start, const char* list_end, List* list) {
   return 1;
 }
 
-int parseRecipeIngredients(const char* recipe_start, const char* recipe_end, RecipeRecord* recipe) {
-  const char* ingredients_value = findKeyInRange(recipe_start, recipe_end, "ingredients");
-  if (!ingredients_value || *ingredients_value != '[') return 0;
-  const char* ingredients_end = matchingClose(ingredients_value, ']');
-  if (!ingredients_end || ingredients_end > recipe_end) return 0;
+void parseWeather(const char* json, Dashboard* dashboard) {
+  Weather* weather = &dashboard->weather;
+  copyText(weather->condition_label, sizeof(weather->condition_label), "UNKNOWN");
 
-  const char* cursor = ingredients_value + 1;
-  while (cursor < ingredients_end && recipe->ingredient_count < kMaxRecipeIngredients) {
-    const char* object_start = strchr(cursor, '{');
-    if (!object_start || object_start >= ingredients_end) break;
-    const char* object_end = matchingClose(object_start, '}');
-    if (!object_end || object_end > ingredients_end) break;
+  const char* weather_value = findKeyInRange(json, NULL, "weather");
+  if (!weather_value || *weather_value != '{') return;
+  const char* weather_end = matchingClose(weather_value, '}');
+  if (!weather_end) return;
 
-    RecipeIngredientRecord* ingredient = &recipe->ingredients[recipe->ingredient_count];
-    extractString(object_start, object_end, "name", ingredient->name, sizeof(ingredient->name), "");
-    extractString(object_start, object_end, "amount", ingredient->amount, sizeof(ingredient->amount), "");
-    if (ingredient->name[0] || ingredient->amount[0]) recipe->ingredient_count++;
-    cursor = object_end + 1;
-  }
-  return 1;
+  weather->available = extractBool(weather_value, weather_end, "available", 0);
+  weather->temperature_c = extractInt(weather_value, weather_end, "temperature_c", 0);
+  weather->feels_like_c = extractInt(weather_value, weather_end, "feels_like_c", 0);
+  weather->high_c = extractInt(weather_value, weather_end, "high_c", 0);
+  weather->low_c = extractInt(weather_value, weather_end, "low_c", 0);
+  weather->precipitation_probability = extractInt(weather_value, weather_end, "precipitation_probability", 0);
+  weather->wind_kph = extractInt(weather_value, weather_end, "wind_kph", 0);
+  extractString(weather_value, weather_end, "condition_label", weather->condition_label, sizeof(weather->condition_label), "UNKNOWN");
 }
 
-int parseRecipes(const char* json, Dashboard* dashboard) {
-  const char* recipes_value = findKeyInRange(json, NULL, "recipes");
-  if (!recipes_value || *recipes_value != '[') return 0;
-  const char* recipes_end = matchingClose(recipes_value, ']');
-  if (!recipes_end) return 0;
+void parseAgenda(const char* json, Dashboard* dashboard) {
+  const char* agenda_value = findKeyInRange(json, NULL, "agenda");
+  if (!agenda_value || *agenda_value != '{') return;
+  const char* agenda_end = matchingClose(agenda_value, '}');
+  if (!agenda_end) return;
 
-  const char* cursor = recipes_value + 1;
-  while (cursor < recipes_end && dashboard->recipe_count < kMaxRecipes) {
+  dashboard->agenda_available = extractBool(agenda_value, agenda_end, "available", 0);
+
+  const char* events_value = findKeyInRange(agenda_value, agenda_end, "events");
+  if (!events_value || *events_value != '[') return;
+  const char* events_end = matchingClose(events_value, ']');
+  if (!events_end || events_end > agenda_end) return;
+
+  const char* cursor = events_value + 1;
+  while (cursor < events_end && dashboard->agenda_event_count < kMaxAgendaEvents) {
     const char* object_start = strchr(cursor, '{');
-    if (!object_start || object_start >= recipes_end) break;
+    if (!object_start || object_start >= events_end) break;
     const char* object_end = matchingClose(object_start, '}');
-    if (!object_end || object_end > recipes_end) break;
+    if (!object_end || object_end > events_end) break;
 
-    RecipeRecord* recipe = &dashboard->recipes[dashboard->recipe_count];
-    extractString(object_start, object_end, "id", recipe->id, sizeof(recipe->id), "");
-    extractString(object_start, object_end, "title", recipe->title, sizeof(recipe->title), "");
-    extractString(object_start, object_end, "instructions", recipe->instructions, sizeof(recipe->instructions), "");
-    recipe->calories = extractInt(object_start, object_end, "total_calories", 0);
-    recipe->carbs = extractInt(object_start, object_end, "carbs_g", 0);
-    recipe->fat = extractInt(object_start, object_end, "fat_g", 0);
-    recipe->protein = extractInt(object_start, object_end, "protein_g", 0);
-    recipe->rating_tenths = extractScaledInt(object_start, object_end, "rating", 10, 0);
-    parseRecipeIngredients(object_start, object_end, recipe);
-    if (recipe->title[0]) dashboard->recipe_count++;
+    AgendaEvent* event = &dashboard->agenda_events[dashboard->agenda_event_count];
+    extractString(object_start, object_end, "uid", event->uid, sizeof(event->uid), "");
+    extractString(object_start, object_end, "title", event->title, sizeof(event->title), "");
+    extractString(object_start, object_end, "start", event->start, sizeof(event->start), "");
+    extractString(object_start, object_end, "location", event->location, sizeof(event->location), "");
+    event->all_day = extractBool(object_start, object_end, "all_day", 0);
+    if (event->title[0] && event->start[0]) dashboard->agenda_event_count++;
     cursor = object_end + 1;
   }
-  return 1;
-}
-
-int recipeIndexById(const Dashboard* dashboard, const char* id) {
-  if (!dashboard || !id || !id[0]) return -1;
-  for (int i = 0; i < dashboard->recipe_count; i++) {
-    if (strcmp(dashboard->recipes[i].id, id) == 0) return i;
-  }
-  return -1;
-}
-
-int parseMealPlan(const char* json, Dashboard* dashboard) {
-  const char* meal_plan_value = findKeyInRange(json, NULL, "meal_plan");
-  if (!meal_plan_value || *meal_plan_value != '[') return 0;
-  const char* meal_plan_end = matchingClose(meal_plan_value, ']');
-  if (!meal_plan_end) return 0;
-
-  const char* cursor = meal_plan_value + 1;
-  while (cursor < meal_plan_end && dashboard->meal_plan_count < kMaxRecipes) {
-    const char* object_start = strchr(cursor, '{');
-    if (!object_start || object_start >= meal_plan_end) break;
-    const char* object_end = matchingClose(object_start, '}');
-    if (!object_end || object_end > meal_plan_end) break;
-
-    char id[48];
-    extractString(object_start, object_end, "id", id, sizeof(id), "");
-    const int recipe_index = recipeIndexById(dashboard, id);
-    if (recipe_index >= 0) {
-      dashboard->meal_plan_recipe_indices[dashboard->meal_plan_count++] = recipe_index;
-    }
-    cursor = object_end + 1;
-  }
-  return 1;
 }
 
 int parseDashboard(const char* json, Dashboard* dashboard) {
   memset(dashboard, 0, sizeof(*dashboard));
-  copyText(dashboard->steps_unit, sizeof(dashboard->steps_unit), "steps");
-  copyText(dashboard->calories_unit, sizeof(dashboard->calories_unit), "kcal");
 
   if (!json || !extractBool(json, NULL, "ok", 0)) return 0;
   extractString(json, NULL, "generated_at", dashboard->generated_at, sizeof(dashboard->generated_at), "unknown");
   extractString(json, NULL, "version", dashboard->version, sizeof(dashboard->version), "");
-  dashboard->steps = extractInt(json, NULL, "steps", 0);
-  dashboard->calories = extractInt(json, NULL, "calories", 0);
-  dashboard->protein_g = extractInt(json, NULL, "protein_g", 0);
-  dashboard->challenge_day = extractInt(json, NULL, "day", 1);
-  if (dashboard->challenge_day < 1) dashboard->challenge_day = 1;
-  if (dashboard->challenge_day > 75) dashboard->challenge_day = 75;
-  dashboard->water_tenths = extractScaledInt(json, NULL, "water_l", 10, 0);
-  dashboard->water_target_tenths = extractScaledInt(json, NULL, "water_target_l", 10, 30);
-  dashboard->sleep_tenths = extractScaledInt(json, NULL, "sleep_hours", 10, 0);
-  dashboard->sleep_target_tenths = extractScaledInt(json, NULL, "sleep_target_hours", 10, 80);
-  dashboard->workouts = extractInt(json, NULL, "workouts", 0);
-  dashboard->workout_target = extractInt(json, NULL, "workout_target", 2);
-  dashboard->steps_target = extractInt(json, NULL, "steps_target", 10000);
-  dashboard->calories_target = extractInt(json, NULL, "calories_target", 2000);
-  extractString(json, NULL, "steps_unit", dashboard->steps_unit, sizeof(dashboard->steps_unit), "steps");
-  extractString(json, NULL, "calories_unit", dashboard->calories_unit, sizeof(dashboard->calories_unit), "kcal");
+
+  parseWeather(json, dashboard);
+  parseAgenda(json, dashboard);
 
   const char* lists_value = findKeyInRange(json, NULL, "lists");
   if (!lists_value || *lists_value != '[') return 1;
@@ -596,8 +455,6 @@ int parseDashboard(const char* json, Dashboard* dashboard) {
     if (list->key[0] || list->title[0]) dashboard->list_count++;
     cursor = object_end + 1;
   }
-  parseRecipes(json, dashboard);
-  parseMealPlan(json, dashboard);
   return 1;
 }
 
@@ -771,9 +628,30 @@ int renderLines(const Dashboard* dashboard, const char* status, char lines[][96]
   snprintf(mode, sizeof(mode), " Mode %s | refresh 15m", status);
   addCardText(lines, &count, mode);
   addRule(lines, &count);
-  addSectionTitle(lines, &count, "Health");
-  addMetric(lines, &count, "STEPS", dashboard->steps, dashboard->steps_target, dashboard->steps_unit);
-  addMetric(lines, &count, "CAL", dashboard->calories, dashboard->calories_target, dashboard->calories_unit);
+  addSectionTitle(lines, &count, "Weather");
+  if (dashboard->weather.available) {
+    addMetric(lines, &count, "RAIN", dashboard->weather.precipitation_probability, 100, "%");
+    char weather_line[64];
+    snprintf(weather_line, sizeof(weather_line), " Now %dC H%d L%d %s", dashboard->weather.temperature_c,
+             dashboard->weather.high_c, dashboard->weather.low_c, dashboard->weather.condition_label);
+    addCardText(lines, &count, weather_line);
+  } else {
+    addCardText(lines, &count, " Weather unavailable");
+  }
+  addRule(lines, &count);
+  addSectionTitle(lines, &count, "Agenda");
+  if (!dashboard->agenda_available) {
+    addCardText(lines, &count, " Agenda unavailable");
+  } else if (dashboard->agenda_event_count == 0) {
+    addCardText(lines, &count, " No upcoming events");
+  } else {
+    const int shown = dashboard->agenda_event_count > 4 ? 4 : dashboard->agenda_event_count;
+    for (int i = 0; i < shown; i++) {
+      char event_line[96];
+      snprintf(event_line, sizeof(event_line), " %.16s %.30s", dashboard->agenda_events[i].start, dashboard->agenda_events[i].title);
+      addCardText(lines, &count, event_line);
+    }
+  }
   addRule(lines, &count);
   for (int i = 0; i < dashboard->list_count; i++) addList(lines, &count, &dashboard->lists[i]);
   addCardText(lines, &count, " Telegram updates lists");
@@ -799,16 +677,109 @@ void fillRect(Canvas* canvas, int x, int y, int w, int h, unsigned char color) {
   }
 }
 
-void strokeRect(Canvas* canvas, int x, int y, int w, int h, int thickness, unsigned char color) {
-  fillRect(canvas, x, y, w, thickness, color);
-  fillRect(canvas, x, y + h - thickness, w, thickness, color);
-  fillRect(canvas, x, y, thickness, h, color);
-  fillRect(canvas, x + w - thickness, y, thickness, h, color);
+// --- HUD chrome ------------------------------------------------------------
+// The panels are framed as HUD brackets rather than plain rectangles: a
+// hairline border, heavy L-corners, and the top-right corner cut off at 45
+// degrees. Every box keeps its exact bounding rect, so the layout and the touch
+// regions computed from the same numbers are untouched.
+//
+// Deliberately still two-tone. The obvious way to sell "cyberpunk" would be
+// mid-grey glows and gradients, but e-ink renders greys by dithering and pays
+// for them with a slower, ghost-prone refresh - so the look has to come from
+// geometry, which costs nothing on this display.
+const int kHudEdge = 2;      // hairline border thickness
+const int kHudBracket = 4;   // corner bracket thickness
+const int kHudCorner = 28;   // how far a bracket runs along each edge
+const int kHudNotch = 16;    // 45-degree cut on the top-right corner
+
+// The full-size kHud* triple above is for tiles; buttons and rows scale it
+// down. Named rather than left as matching literals at each call site, since
+// that's what let the two only-nearly-matching versions of the photo-tile
+// carve (fixed with clampHudNotch()) go unnoticed for as long as they did.
+const int kHudCornerButton = 14;
+const int kHudNotchButton = 10;
+const int kHudCornerSmallButton = 12;
+const int kHudNotchSmallButton = 8;
+const int kHudCornerRow = 16;
+const int kHudNotchRow = 12;
+
+void hLine(Canvas* canvas, int x0, int x1, int y, int thickness, unsigned char color) {
+  if (x1 < x0) { const int swap = x0; x0 = x1; x1 = swap; }
+  fillRect(canvas, x0, y, x1 - x0 + 1, thickness, color);
+}
+
+void dashedHLine(Canvas* canvas, int x0, int x1, int y, int dash, int gap, int thickness, unsigned char color) {
+  for (int x = x0; x <= x1; x += dash + gap) {
+    const int end = x + dash - 1 < x1 ? x + dash - 1 : x1;
+    hLine(canvas, x, end, y, thickness, color);
+  }
+}
+
+// A 45-degree chamfer drawn as a staircase of small squares. fillTriangle/line
+// would do it too, but both are defined further down and neither is needed for
+// a diagonal this short.
+void chamfer(Canvas* canvas, int x, int y, int size, int thickness, unsigned char color) {
+  for (int i = 0; i < size; i++) fillRect(canvas, x + i, y + i, thickness, thickness, color);
+}
+
+// Shared by hudFrame() and anything that fills all the way to a tile's edge
+// and needs to carve the same top-right cut out of its own fill (the photo
+// tile's bitmap, the title tab's background). Centralizing the clamp is what
+// keeps a carved fill and hudFrame's own cut corner from disagreeing on
+// whether a small box even has one.
+int clampHudNotch(int w, int h, int notch) {
+  return (notch * 2 > w || notch * 2 > h) ? 0 : notch;
+}
+
+// 45-degree staircase carve, one setPixel-row at a time via fillRect. Used to
+// cut the same corner out of a fill that hudFrame() is about to frame, so the
+// two corners line up instead of a diagonal frame sitting on a square fill.
+void carveTopRightNotch(Canvas* canvas, int x, int y, int w, int h, int notch, unsigned char fill_color) {
+  notch = clampHudNotch(w, h, notch);
+  for (int i = 0; i < notch; i++) fillRect(canvas, x + w - notch + i, y + i, notch - i, 1, fill_color);
+}
+
+void hudFrame(Canvas* canvas, int x, int y, int w, int h, int edge, int corner, int notch, unsigned char color) {
+  if (w <= 0 || h <= 0) return;
+  notch = clampHudNotch(w, h, notch);
+  if (corner * 2 > w) corner = w / 2;
+  if (corner * 2 > h) corner = h / 2;
+
+  fillRect(canvas, x, y, w - notch, edge, color);                    // top, stopping at the cut
+  fillRect(canvas, x, y + h - edge, w, edge, color);                 // bottom
+  fillRect(canvas, x, y, edge, h, color);                            // left
+  fillRect(canvas, x + w - edge, y + notch, edge, h - notch, color); // right, starting below the cut
+  if (notch > 0) chamfer(canvas, x + w - notch, y, notch, edge, color);
+
+  const int b = kHudBracket;
+  fillRect(canvas, x, y, corner, b, color);                          // top-left
+  fillRect(canvas, x, y, b, corner, color);
+  fillRect(canvas, x, y + h - b, corner, b, color);                  // bottom-left
+  fillRect(canvas, x, y + h - corner, b, corner, color);
+  fillRect(canvas, x + w - corner, y + h - b, corner, b, color);     // bottom-right
+  fillRect(canvas, x + w - b, y + h - corner, b, corner, color);
+  fillRect(canvas, x + w - notch - corner, y, corner, b, color);     // top-right, split by the cut
+  fillRect(canvas, x + w - b, y + notch, b, corner, color);
+}
+
+// The rule under a panel title: solid where it leaves the frame, then dashed
+// out to the far edge, with a tick at each end. Reads as a HUD scale rather
+// than a plain divider, and still costs a single row of pixels.
+void hudRail(Canvas* canvas, int x0, int x1, int y, unsigned char color) {
+  if (x1 <= x0) return;
+  const int solid = (x1 - x0) / 5;
+  hLine(canvas, x0, x0 + solid, y, 2, color);
+  dashedHLine(canvas, x0 + solid + 9, x1, y, 11, 7, 2, color);
+  fillRect(canvas, x0, y - 5, 2, 12, color);
+  fillRect(canvas, x1 - 1, y - 5, 2, 12, color);
 }
 
 void doubleRect(Canvas* canvas, int x, int y, int w, int h, unsigned char color) {
-  strokeRect(canvas, x, y, w, h, 3, color);
-  strokeRect(canvas, x + 7, y + 7, w - 14, h - 14, 2, color);
+  hudFrame(canvas, x, y, w, h, 3, kHudCorner, kHudNotch, color);
+  // The inner border used to be a second solid rectangle, which just read as a
+  // thicker edge. Dashed, and only top and bottom, it reads as panel lining.
+  dashedHLine(canvas, x + 9, x + w - 10, y + 8, 12, 7, 2, color);
+  dashedHLine(canvas, x + 9, x + w - 10, y + h - 10, 12, 7, 2, color);
 }
 
 void line(Canvas* canvas, int x0, int y0, int x1, int y1, int thickness, unsigned char color) {
@@ -832,36 +803,31 @@ void line(Canvas* canvas, int x0, int y0, int x1, int y1, int thickness, unsigne
   }
 }
 
-void circleRing(Canvas* canvas, int cx, int cy, int radius, int thickness, int percent, unsigned char color) {
-  const int outer = radius;
-  const int inner = radius - thickness;
-  const int outer2 = outer * outer;
-  const int inner2 = inner * inner;
-  const double progress = percent < 0 ? 0.0 : (percent > 100 ? 1.0 : percent / 100.0);
-  for (int y = cy - outer; y <= cy + outer; y++) {
-    for (int x = cx - outer; x <= cx + outer; x++) {
-      const int dx = x - cx;
-      const int dy = y - cy;
-      const int d2 = dx * dx + dy * dy;
-      if (d2 > outer2 || d2 < inner2) continue;
-      double angle = atan2(static_cast<double>(dy), static_cast<double>(dx)) + M_PI / 2.0;
-      if (angle < 0) angle += M_PI * 2.0;
-      if (angle / (M_PI * 2.0) <= progress) setPixel(canvas, x, y, color);
-    }
+void fillCircle(Canvas* canvas, int cx, int cy, int r, unsigned char color) {
+  for (int dy = -r; dy <= r; dy++) {
+    const int half = static_cast<int>(sqrt(static_cast<double>(r * r - dy * dy)));
+    fillRect(canvas, cx - half, cy + dy, half * 2 + 1, 1, color);
   }
 }
 
-void circleTrack(Canvas* canvas, int cx, int cy, int radius, int thickness) {
-  const int outer = radius;
-  const int inner = radius - thickness;
-  const int outer2 = outer * outer;
-  const int inner2 = inner * inner;
-  for (int y = cy - outer; y <= cy + outer; y++) {
-    for (int x = cx - outer; x <= cx + outer; x++) {
-      const int dx = x - cx;
-      const int dy = y - cy;
-      const int d2 = dx * dx + dy * dy;
-      if (d2 <= outer2 && d2 >= inner2) setPixel(canvas, x, y, 224);
+// Small filled triangle via a bounding-box scan + sign test on each edge - fine for icon-sized
+// shapes (a few thousand pixels at most), no need for a proper scanline rasterizer here.
+void fillTriangle(Canvas* canvas, int x0, int y0, int x1, int y1, int x2, int y2, unsigned char color) {
+  int min_x = x0 < x1 ? x0 : x1; if (x2 < min_x) min_x = x2;
+  int max_x = x0 > x1 ? x0 : x1; if (x2 > max_x) max_x = x2;
+  int min_y = y0 < y1 ? y0 : y1; if (y2 < min_y) min_y = y2;
+  int max_y = y0 > y1 ? y0 : y1; if (y2 > max_y) max_y = y2;
+  auto sign = [](int px, int py, int ax, int ay, int bx, int by) {
+    return (px - bx) * (ay - by) - (ax - bx) * (py - by);
+  };
+  for (int y = min_y; y <= max_y; y++) {
+    for (int x = min_x; x <= max_x; x++) {
+      const int d0 = sign(x, y, x0, y0, x1, y1);
+      const int d2 = sign(x, y, x1, y1, x2, y2);
+      const int d3 = sign(x, y, x2, y2, x0, y0);
+      const int has_neg = (d0 < 0) || (d2 < 0) || (d3 < 0);
+      const int has_pos = (d0 > 0) || (d2 > 0) || (d3 > 0);
+      if (!(has_neg && has_pos)) setPixel(canvas, x, y, color);
     }
   }
 }
@@ -927,52 +893,6 @@ void drawTextClipped(Canvas* canvas, int x, int y, int max_width, const char* te
   drawText(canvas, x, y, clipped, scale, color);
 }
 
-int drawTextWrapped(Canvas* canvas, int x, int y, int max_width, const char* text, int scale, unsigned char color, int max_lines) {
-  if (!text || !text[0] || max_lines <= 0) return 0;
-  char source[256];
-  copyText(source, sizeof(source), text);
-  const int max_chars = max_width / (6 * scale);
-  if (max_chars <= 0) return 0;
-
-  int lines = 0;
-  char line_text[128] = "";
-  char* cursor = source;
-  while (*cursor && lines < max_lines) {
-    while (*cursor && isspace(static_cast<unsigned char>(*cursor))) cursor++;
-    if (!*cursor) break;
-    char* word = cursor;
-    while (*cursor && !isspace(static_cast<unsigned char>(*cursor))) cursor++;
-    const char saved = *cursor;
-    *cursor = '\0';
-
-    const int line_len = static_cast<int>(strlen(line_text));
-    const int word_len = static_cast<int>(strlen(word));
-    if (line_len > 0 && line_len + 1 + word_len > max_chars) {
-      drawText(canvas, x, y + lines * (8 * scale + 6), line_text, scale, color);
-      lines++;
-      line_text[0] = '\0';
-    }
-    if (lines >= max_lines) break;
-    if (word_len > max_chars) {
-      char clipped[128];
-      copyText(clipped, sizeof(clipped), word);
-      clipped[max_chars] = '\0';
-      drawText(canvas, x, y + lines * (8 * scale + 6), clipped, scale, color);
-      lines++;
-    } else {
-      if (line_text[0]) strncat(line_text, " ", sizeof(line_text) - strlen(line_text) - 1);
-      strncat(line_text, word, sizeof(line_text) - strlen(line_text) - 1);
-    }
-
-    *cursor = saved;
-  }
-  if (line_text[0] && lines < max_lines) {
-    drawText(canvas, x, y + lines * (8 * scale + 6), line_text, scale, color);
-    lines++;
-  }
-  return lines;
-}
-
 void drawTextCentered(Canvas* canvas, int cx, int y, int max_width, const char* text, int scale, unsigned char color) {
   char clipped[128];
   copyText(clipped, sizeof(clipped), text);
@@ -981,224 +901,45 @@ void drawTextCentered(Canvas* canvas, int cx, int y, int max_width, const char* 
   drawText(canvas, cx - textWidth(clipped, scale) / 2, y, clipped, scale, color);
 }
 
-int readPgmToken(FILE* file, char* out, size_t out_size) {
-  if (!file || !out || out_size == 0) return 0;
-  int ch = 0;
-  do {
-    ch = fgetc(file);
-    if (ch == '#') {
-      while (ch != EOF && ch != '\n') ch = fgetc(file);
-    }
-  } while (ch != EOF && isspace(ch));
-  if (ch == EOF) return 0;
+// Panel titles sit in a filled tab with a cut corner, reversed out of the ink,
+// instead of floating as plain centred text. Same centre and same baseline as
+// the drawTextCentered() call it replaces, so nothing below it moves.
+void hudTitleTab(Canvas* canvas, int cx, int y, int max_width, const char* title, int scale) {
+  char clipped[64];
+  copyText(clipped, sizeof(clipped), title);
+  const int pad_x = 13;
+  const int max_chars = (max_width - pad_x * 2) / (6 * scale);
+  if (max_chars > 0 && static_cast<int>(strlen(clipped)) > max_chars) clipped[max_chars] = '\0';
 
-  size_t index = 0;
-  while (ch != EOF && !isspace(ch)) {
-    if (index + 1 < out_size) out[index++] = static_cast<char>(ch);
-    ch = fgetc(file);
-  }
-  out[index] = '\0';
-  return index > 0;
+  // textWidth() counts a trailing advance the last glyph never draws into, so
+  // the tab would sit visibly off-centre without dropping it.
+  const int text_w = textWidth(clipped, scale) - scale;
+  const int pad_y = 7;
+  const int box_w = text_w + pad_x * 2;
+  const int box_h = 7 * scale + pad_y * 2;
+  const int box_x = cx - box_w / 2;
+  const int box_y = y - pad_y;
+  const int notch = box_h / 2;
+
+  fillRect(canvas, box_x, box_y, box_w, box_h, 0);
+  carveTopRightNotch(canvas, box_x, box_y, box_w, box_h, notch, 255);
+  drawText(canvas, box_x + pad_x, y, clipped, scale, 255);
 }
 
-unsigned char* loadPgmPixels(const char* primary_path, const char* fallback_path, int* width, int* height) {
-  FILE* file = fopen(primary_path, "rb");
-  if (!file && fallback_path) file = fopen(fallback_path, "rb");
-  if (!file) return NULL;
-
-  char token[32];
-  if (!readPgmToken(file, token, sizeof(token)) || strcmp(token, "P5") != 0) {
-    fclose(file);
-    return NULL;
+// Skips the top kKindleStatusBarHeight rows: on the real device that strip is
+// the Kindle OS's own status bar, never drawn to by this renderer (it stays
+// at clearCanvas()'s 255) and never written to the framebuffer either
+// (renderToFramebuffer() starts its pixel loop below it). Inverting it here
+// would only matter for --dump-pgm/--save-pgm/--render previews, and would
+// make them show a black strip that never appears on the device - the
+// opposite of what those previews are for.
+void invertCanvas(Canvas* canvas) {
+  if (!canvas || !canvas->pixels) return;
+  const int start_y = canvas->height > kKindleStatusBarHeight ? kKindleStatusBarHeight : 0;
+  for (int y = start_y; y < canvas->height; y++) {
+    unsigned char* row = canvas->pixels + static_cast<size_t>(y) * static_cast<size_t>(canvas->width);
+    for (int x = 0; x < canvas->width; x++) row[x] = static_cast<unsigned char>(255 - row[x]);
   }
-  if (!readPgmToken(file, token, sizeof(token))) {
-    fclose(file);
-    return NULL;
-  }
-  const int image_w = atoi(token);
-  if (!readPgmToken(file, token, sizeof(token))) {
-    fclose(file);
-    return NULL;
-  }
-  const int image_h = atoi(token);
-  if (!readPgmToken(file, token, sizeof(token))) {
-    fclose(file);
-    return NULL;
-  }
-  const int max_value = atoi(token);
-  if (image_w <= 0 || image_h <= 0 || max_value <= 0 || max_value > 255) {
-    fclose(file);
-    return NULL;
-  }
-
-  const size_t size = static_cast<size_t>(image_w) * static_cast<size_t>(image_h);
-  unsigned char* pixels = static_cast<unsigned char*>(malloc(size));
-  if (!pixels) {
-    fclose(file);
-    return NULL;
-  }
-  if (fread(pixels, 1, size, file) != size) {
-    free(pixels);
-    fclose(file);
-    return NULL;
-  }
-  fclose(file);
-  *width = image_w;
-  *height = image_h;
-  return pixels;
-}
-
-const unsigned char* loadCachedPgmPixels(const char* primary_path, const char* fallback_path, int* width, int* height) {
-  for (int i = 0; i < g_pgm_cache_count; i++) {
-    CachedPgm* cached = &g_pgm_cache[i];
-    if (strcmp(cached->primary_path, primary_path ? primary_path : "") == 0 &&
-        strcmp(cached->fallback_path, fallback_path ? fallback_path : "") == 0) {
-      *width = cached->width;
-      *height = cached->height;
-      return cached->pixels;
-    }
-  }
-
-  const long long started = monotonicMs();
-  unsigned char* pixels = loadPgmPixels(primary_path, fallback_path, width, height);
-  fprintf(stderr, "timing=image-load path=%s ok=%d ms=%lld\n", primary_path ? primary_path : "", pixels ? 1 : 0, monotonicMs() - started);
-  if (!pixels) return NULL;
-  if (g_pgm_cache_count >= static_cast<int>(sizeof(g_pgm_cache) / sizeof(g_pgm_cache[0]))) return pixels;
-
-  CachedPgm* cached = &g_pgm_cache[g_pgm_cache_count++];
-  copyText(cached->primary_path, sizeof(cached->primary_path), primary_path ? primary_path : "");
-  copyText(cached->fallback_path, sizeof(cached->fallback_path), fallback_path ? fallback_path : "");
-  cached->pixels = pixels;
-  cached->width = *width;
-  cached->height = *height;
-  return cached->pixels;
-}
-
-void freePgmCache() {
-  for (int i = 0; i < g_pgm_cache_count; i++) {
-    free(g_pgm_cache[i].pixels);
-    g_pgm_cache[i].pixels = NULL;
-  }
-  g_pgm_cache_count = 0;
-}
-
-void drawPgmImage(Canvas* canvas, int x, int y, int w, int h, const char* primary_path, const char* fallback_path, int invert) {
-  int image_w = 0;
-  int image_h = 0;
-  const unsigned char* pixels = loadCachedPgmPixels(primary_path, fallback_path, &image_w, &image_h);
-  if (!pixels) {
-    strokeRect(canvas, x, y, w, h, 2, 0);
-    drawTextCentered(canvas, x + w / 2, y + h / 2 - 12, w - 20, "MEAL ART", 3, 0);
-    return;
-  }
-
-  fillRect(canvas, x, y, w, h, invert ? 0 : 255);
-
-  int draw_w = w;
-  int draw_h = h;
-  if (image_w * h > w * image_h) {
-    draw_h = (w * image_h) / image_w;
-  } else {
-    draw_w = (h * image_w) / image_h;
-  }
-  if (draw_w < 1) draw_w = 1;
-  if (draw_h < 1) draw_h = 1;
-
-  const int draw_x = x + (w - draw_w) / 2;
-  const int draw_y = y + (h - draw_h) / 2;
-  for (int yy = 0; yy < draw_h; yy++) {
-    const int source_y = (yy * image_h) / draw_h;
-    for (int xx = 0; xx < draw_w; xx++) {
-      const int source_x = (xx * image_w) / draw_w;
-      const unsigned char value = pixels[source_y * image_w + source_x];
-      setPixel(canvas, draw_x + xx, draw_y + yy, invert ? static_cast<unsigned char>(255 - value) : value);
-    }
-  }
-}
-
-void drawPgmImageCover(Canvas* canvas, int x, int y, int w, int h, const char* primary_path, const char* fallback_path, int invert) {
-  int image_w = 0;
-  int image_h = 0;
-  const unsigned char* pixels = loadCachedPgmPixels(primary_path, fallback_path, &image_w, &image_h);
-  if (!pixels) {
-    strokeRect(canvas, x, y, w, h, 2, 0);
-    drawTextCentered(canvas, x + w / 2, y + h / 2 - 12, w - 20, "IMAGE", 3, 0);
-    return;
-  }
-
-  fillRect(canvas, x, y, w, h, invert ? 0 : 255);
-  int content_left = 0;
-  int content_top = 0;
-  int content_right = image_w;
-  int content_bottom = image_h;
-  int found_content = 0;
-  for (int yy = 0; yy < image_h; yy++) {
-    for (int xx = 0; xx < image_w; xx++) {
-      const unsigned char value = pixels[yy * image_w + xx];
-      if (value > 246) continue;
-      if (!found_content) {
-        content_left = xx;
-        content_right = xx + 1;
-        content_top = yy;
-        content_bottom = yy + 1;
-        found_content = 1;
-      } else {
-        if (xx < content_left) content_left = xx;
-        if (xx + 1 > content_right) content_right = xx + 1;
-        if (yy < content_top) content_top = yy;
-        if (yy + 1 > content_bottom) content_bottom = yy + 1;
-      }
-    }
-  }
-  if (!found_content || content_right <= content_left || content_bottom <= content_top) {
-    content_left = 0;
-    content_top = 0;
-    content_right = image_w;
-    content_bottom = image_h;
-  }
-  const int source_w = content_right - content_left;
-  const int source_h = content_bottom - content_top;
-  for (int yy = 0; yy < h; yy++) {
-    const int source_y = source_w * h > w * source_h
-      ? content_top + (yy * source_h) / h
-      : content_top + ((yy + ((w * source_h) / source_w - h) / 2) * source_w) / w;
-    if (source_y < 0 || source_y >= image_h) continue;
-    for (int xx = 0; xx < w; xx++) {
-      const int source_x = source_w * h > w * source_h
-        ? content_left + ((xx + ((h * source_w) / source_h - w) / 2) * source_h) / h
-        : content_left + (xx * source_w) / w;
-      if (source_x < 0 || source_x >= image_w) continue;
-      const unsigned char value = pixels[source_y * image_w + source_x];
-      setPixel(canvas, x + xx, y + yy, invert ? static_cast<unsigned char>(255 - value) : value);
-    }
-  }
-}
-
-void recipePhotoPath(const char* base_dir, const char* recipe_id, char* out, size_t out_size) {
-  char safe_id[64];
-  size_t j = 0;
-  for (size_t i = 0; recipe_id && recipe_id[i] && j + 1 < sizeof(safe_id); i++) {
-    const char ch = recipe_id[i];
-    if (isalnum(static_cast<unsigned char>(ch)) || ch == '-' || ch == '_') safe_id[j++] = ch;
-  }
-  safe_id[j] = '\0';
-  if (!safe_id[0]) {
-    if (out_size > 0) out[0] = '\0';
-    return;
-  }
-  snprintf(out, out_size, "%s/%s.pgm", base_dir, safe_id);
-}
-
-int framebufferInvertForVisibleImage(int should_appear_flipped) {
-  return g_invert_images && should_appear_flipped;
-}
-
-void drawRecipeLocalImage(Canvas* canvas, int x, int y, int w, int h, const RecipeRecord* recipe) {
-  char primary[192];
-  char fallback[192];
-  recipePhotoPath(kRecipeAssetsPath, recipe ? recipe->id : "", primary, sizeof(primary));
-  recipePhotoPath(kRecipeAssetsLocalPath, recipe ? recipe->id : "", fallback, sizeof(fallback));
-  drawPgmImageCover(canvas, x, y, w, h, primary, fallback, framebufferInvertForVisibleImage(1));
 }
 
 const char* displayListTitle(const List* list) {
@@ -1209,182 +950,335 @@ const char* displayListTitle(const List* list) {
 }
 
 const char* displayListTitleForIndex(const List* list, int list_index) {
-  if (list_index == 0) return "CHORES";
-  if (list_index == 1) return "GROCERY";
+  // Fixed order sent by kindle-dashboard-data.ts: [todo, grocery, notes].
+  if (list_index == 0) return "TAREFAS";
+  if (list_index == 1) return "COMPRAS";
+  if (list_index == 2) return "NOTAS";
   return displayListTitle(list);
 }
 
 Rect exitButtonRectForScreen(int width, int height);
+Rect lockButtonRectForScreen(int width, int height);
+void drawExitAndLockButtons(Canvas* canvas, int width, int height);
 void drawBitmapDashboard(Canvas* canvas, const Dashboard* dashboard, const char* status);
 void clearTouchRegions();
 void addTouchRegion(Rect rect, TouchAction action, int list_index, int item_index, const char* item_id, int item_done);
 
-void drawRadialMetric(Canvas* canvas, int x, int y, int w, int h, const char* label, int value, int target, const char* unit) {
-  strokeRect(canvas, x, y, w, h, 2, 0);
-  const int percent = target > 0 ? (value * 100) / target : 0;
-  const int clamped = percent < 0 ? 0 : (percent > 100 ? 100 : percent);
-  const int min_side = w < h ? w : h;
-  const int radius = w < 160 ? min_side / 4 : min_side / 3;
-  const int ring_thickness = w < 160 ? 10 : 14;
-  const int percent_scale = w < 160 ? 3 : 4;
-  const int cx = x + w / 2;
-  const int cy = y + h / 2 - 18;
-  circleTrack(canvas, cx, cy, radius, ring_thickness);
-  circleRing(canvas, cx, cy, radius, ring_thickness, clamped, 0);
-
-  char percent_text[24];
-  snprintf(percent_text, sizeof(percent_text), "%d%%", clamped);
-  drawTextCentered(canvas, cx, cy - 21, 132, percent_text, percent_scale, 0);
-  drawTextCentered(canvas, cx, cy + 24, 132, label, 2, 0);
-
-  char value_text[32];
-  char target_text[32];
-  char metric[80];
-  formatNumber(value, value_text, sizeof(value_text));
-  formatNumber(target, target_text, sizeof(target_text));
-  const int metric_scale = w < 260 ? 2 : 3;
-  if (w < 260) snprintf(metric, sizeof(metric), "%s / %s", value_text, target_text);
-  else snprintf(metric, sizeof(metric), "%s / %s %s", value_text, target_text, unit);
-  drawTextCentered(canvas, cx, y + h - 38, w - 18, metric, metric_scale, 0);
+// `start` is "YYYY-MM-DDTHH:MM:SS±HH:MM", already converted to local wall-clock
+// time by the backend's toLocalIsoString() (the offset itself is local, but
+// the date/hour/minute digits are what should be displayed as-is — the native
+// renderer has no timezone tables of its own).
+void agendaEventDateTime(const AgendaEvent* event, char* out, size_t out_size) {
+  char date_part[6] = "--/--";
+  if (strlen(event->start) >= 10) {
+    date_part[0] = event->start[8];
+    date_part[1] = event->start[9];
+    date_part[2] = '/';
+    date_part[3] = event->start[5];
+    date_part[4] = event->start[6];
+    date_part[5] = '\0';
+  }
+  if (event->all_day) {
+    snprintf(out, out_size, "%s ALL DAY", date_part);
+    return;
+  }
+  char clock[6] = "--:--";
+  if (strlen(event->start) >= 16) {
+    memcpy(clock, event->start + 11, 5);
+    clock[5] = '\0';
+  }
+  snprintf(out, out_size, "%s %s", date_part, clock);
 }
 
-void formatTenths(int value, char* out, size_t size) {
-  const int whole = value / 10;
-  const int fraction = value < 0 ? -(value % 10) : value % 10;
-  if (fraction == 0) snprintf(out, size, "%d", whole);
-  else snprintf(out, size, "%d.%d", whole, fraction);
+// Small pixel-art icons drawn with the existing shape primitives (no separate icon font/asset
+// needed) so the weather bar can show something other than bare letters/numbers for condition,
+// high/low and rain chance.
+void drawArrowUp(Canvas* canvas, int cx, int cy, int size, unsigned char color) {
+  const int r = size / 2;
+  fillTriangle(canvas, cx, cy - r, cx - r, cy + r / 3, cx + r, cy + r / 3, color);
+  fillRect(canvas, cx - r / 4, cy + r / 3, r / 2 + 1, r * 2 / 3, color);
 }
 
-void drawStarIcon(Canvas* canvas, int x, int y, int scale, int filled) {
-  static const char* filled_mask[] = {
-    "......#......",
-    ".....###.....",
-    ".....###.....",
-    "#############",
-    ".###########.",
-    "..#########..",
-    "...#######...",
-    "...#######...",
-    "..###...###..",
-    ".##.......##.",
-    "##.........##"
-  };
-  static const char* empty_mask[] = {
-    "......#......",
-    ".....#.#.....",
-    ".....#.#.....",
-    "###..#.#..###",
-    ".##.....##..",
-    "..##...##...",
-    "...#...#....",
-    "...#...#....",
-    "..##...##...",
-    ".##.....##..",
-    "##.......##."
-  };
-  const char** mask = filled ? filled_mask : empty_mask;
-  for (int row = 0; row < 11; row++) {
-    for (int col = 0; mask[row][col]; col++) {
-      if (mask[row][col] == '#') fillRect(canvas, x + col * scale, y + row * scale, scale, scale, 0);
+void drawArrowDown(Canvas* canvas, int cx, int cy, int size, unsigned char color) {
+  const int r = size / 2;
+  fillTriangle(canvas, cx, cy + r, cx - r, cy - r / 3, cx + r, cy - r / 3, color);
+  fillRect(canvas, cx - r / 4, cy - r, r / 2 + 1, r * 2 / 3, color);
+}
+
+void drawDroplet(Canvas* canvas, int cx, int cy, int size, unsigned char color) {
+  const int r = size / 2;
+  fillTriangle(canvas, cx, cy - r, cx - r * 2 / 3, cy, cx + r * 2 / 3, cy, color);
+  fillCircle(canvas, cx, cy + r / 4, r * 2 / 3, color);
+}
+
+// Same solid-silhouette approach as the weather icons: a filled circle punched down to a
+// semicircle (fillRect over its lower half, in the paper colour) gives the shackle's rounded top
+// without an actual arc primitive. Closed has both legs seated in the body; open keeps only the
+// right leg, with the whole shackle nudged right so the left side lifts clear of the body,
+// leaving a visible gap - the standard flat-icon read for "unlocked" at low resolution.
+void drawPadlockIcon(Canvas* canvas, int cx, int cy, int size, int locked, unsigned char color) {
+  const unsigned char paper = static_cast<unsigned char>(255 - color);
+  const int body_w = size;
+  const int body_h = size * 11 / 16;
+  const int body_x = cx - body_w / 2;
+  const int body_y = cy + size / 2 - body_h;
+  const int shackle_r = size * 3 / 8;
+  const int leg_w = size / 6;
+
+  if (locked) {
+    const int shackle_cy = body_y - shackle_r / 2;
+    fillCircle(canvas, cx, shackle_cy, shackle_r, color);
+    fillRect(canvas, cx - shackle_r, shackle_cy, shackle_r * 2, shackle_r, paper);
+    fillRect(canvas, cx - shackle_r, shackle_cy, leg_w, body_y - shackle_cy + 4, color);
+    fillRect(canvas, cx + shackle_r - leg_w, shackle_cy, leg_w, body_y - shackle_cy + 4, color);
+  } else {
+    const int shift = shackle_r * 2 / 3;
+    const int shackle_cy = body_y - shackle_r / 2 - leg_w;
+    fillCircle(canvas, cx + shift, shackle_cy, shackle_r, color);
+    fillRect(canvas, cx + shift - shackle_r, shackle_cy, shackle_r * 2, shackle_r, paper);
+    fillRect(canvas, cx + shift + shackle_r - leg_w, shackle_cy, leg_w, body_y - shackle_cy + 4, color);
+    fillRect(canvas, cx + shift - shackle_r, shackle_cy, leg_w, shackle_r * 2 / 3, color);
+  }
+
+  fillRect(canvas, body_x, body_y, body_w, body_h, color);
+  const int hole_r = size / 7;
+  fillCircle(canvas, cx, body_y + hole_r + 3, hole_r, paper);
+  fillRect(canvas, cx - 2, body_y + hole_r + 3, 4, body_h - hole_r - 7, paper);
+}
+
+// Solid-silhouette style icons (filled shapes, no outline detail) since that reads clearly at
+// small sizes on e-ink. condition_label comes from kindle-dashboard-data.ts's fixed vocabulary:
+// CLEAR/CLOUDY/FOG/DRIZZLE/RAIN/SNOW/SHOWERS/STORM/UNKNOWN.
+void drawWeatherIcon(Canvas* canvas, int cx, int cy, int size, const char* condition_label) {
+  const int r = size / 2;
+  if (strcmp(condition_label, "CLEAR") == 0) {
+    fillCircle(canvas, cx, cy, r * 3 / 5, 0);
+    for (int i = 0; i < 8; i++) {
+      const double angle = i * (M_PI / 4.0);
+      const int x0 = cx + static_cast<int>(cos(angle) * r * 0.72);
+      const int y0 = cy + static_cast<int>(sin(angle) * r * 0.72);
+      const int x1 = cx + static_cast<int>(cos(angle) * r);
+      const int y1 = cy + static_cast<int>(sin(angle) * r);
+      line(canvas, x0, y0, x1, y1, 3, 0);
+    }
+    return;
+  }
+
+  const int cloud_cy = cy + r / 6;
+  fillCircle(canvas, cx - r * 3 / 8, cloud_cy, r * 3 / 8, 0);
+  fillCircle(canvas, cx + r / 8, cloud_cy - r / 6, r / 2, 0);
+  fillCircle(canvas, cx + r * 5 / 8, cloud_cy, r * 3 / 8, 0);
+  fillRect(canvas, cx - r * 3 / 4, cloud_cy, r * 3 / 2, r / 3, 0);
+
+  if (strstr(condition_label, "RAIN") || strstr(condition_label, "DRIZZLE") || strstr(condition_label, "SHOWER")) {
+    for (int i = -1; i <= 1; i++) {
+      const int x0 = cx + i * r / 3;
+      line(canvas, x0, cy + r / 3, x0 - r / 8, cy + r, 3, 0);
+    }
+  } else if (strstr(condition_label, "SNOW")) {
+    for (int i = -1; i <= 1; i++) {
+      const int mx = cx + i * r / 3;
+      const int my = cy + r * 3 / 5;
+      line(canvas, mx - 6, my, mx + 6, my, 2, 0);
+      line(canvas, mx, my - 6, mx, my + 6, 2, 0);
+      line(canvas, mx - 5, my - 5, mx + 5, my + 5, 2, 0);
+      line(canvas, mx - 5, my + 5, mx + 5, my - 5, 2, 0);
+    }
+  } else if (strstr(condition_label, "STORM")) {
+    line(canvas, cx + 4, cy + r / 3, cx - 6, cy + r * 2 / 3, 4, 0);
+    line(canvas, cx - 6, cy + r * 2 / 3, cx + 6, cy + r * 2 / 3, 4, 0);
+    line(canvas, cx + 6, cy + r * 2 / 3, cx - 4, cy + r, 4, 0);
+  } else if (strcmp(condition_label, "FOG") == 0) {
+    for (int i = 0; i < 3; i++) line(canvas, cx - r, cy + r / 2 + i * 10, cx + r, cy + r / 2 + i * 10, 3, 0);
+  }
+  // CLOUDY/UNKNOWN: the cloud silhouette alone is enough, nothing extra to add.
+}
+
+// Replaces the old header ("DAILY OPS" title) + separate WEATHER quadrant with a single top bar:
+// icon + big temperature on the left, small icon+value stats (high/low/rain chance) in the
+// middle, EXIT on the right, generated-at/status on a second line.
+void drawWeatherBar(Canvas* canvas, const Dashboard* dashboard, const char* status, int shell_x, int shell_y, int shell_w, int header_h) {
+  doubleRect(canvas, shell_x + 10, shell_y + 10, shell_w - 20, header_h, 0);
+  // The lock button, not EXIT, is the rightmost thing content has to clear now - it sits
+  // between the header content and EXIT.
+  const Rect lock_rect = lockButtonRectForScreen(canvas->width, canvas->height);
+  const int text_w = lock_rect.x - shell_x - 44;
+
+  const Weather& weather = dashboard->weather;
+  const int icon_cx = shell_x + 28 + 36;
+  const int icon_cy = shell_y + 24 + 34;
+  if (weather.available) {
+    drawWeatherIcon(canvas, icon_cx, icon_cy, 68, weather.condition_label);
+
+    char temp[16];
+    snprintf(temp, sizeof(temp), "%dC", weather.temperature_c);
+    const int temp_x = shell_x + 28 + 84;
+    // Scale 4, not 5: at 5 the glyphs' top row started at the same y as the frame's own
+    // inner dashed rule (y+8 below the doubleRect() call above), so "24C" visibly cut
+    // through it. Dropping to 4 and starting two rows lower clears the rule instead of
+    // just drawing a smaller version of the same overlap.
+    drawTextClipped(canvas, temp_x, shell_y + 24, text_w, temp, 4, 0);
+    drawTextClipped(canvas, temp_x, shell_y + 62, 200, weather.condition_label, 2, 0);
+
+    // Icon+value stat cluster (high/low/rain chance), so the numbers don't read as bare,
+    // unlabeled letters - each one sits right next to the icon that explains it.
+    const int stats_x = temp_x + 190;
+    if (stats_x + 210 <= lock_rect.x - 12) {
+      char hi[8]; snprintf(hi, sizeof(hi), "%d", weather.high_c);
+      char lo[8]; snprintf(lo, sizeof(lo), "%d", weather.low_c);
+      char rain[8]; snprintf(rain, sizeof(rain), "%d%%", weather.precipitation_probability);
+
+      drawArrowUp(canvas, stats_x + 10, shell_y + 30, 20, 0);
+      drawTextClipped(canvas, stats_x + 26, shell_y + 20, 70, hi, 3, 0);
+
+      drawArrowDown(canvas, stats_x + 10, shell_y + 62, 20, 0);
+      drawTextClipped(canvas, stats_x + 26, shell_y + 52, 70, lo, 3, 0);
+
+      drawDroplet(canvas, stats_x + 120, shell_y + 46, 24, 0);
+      drawTextClipped(canvas, stats_x + 138, shell_y + 36, 90, rain, 3, 0);
+    }
+  } else {
+    drawTextClipped(canvas, shell_x + 28, shell_y + 24, text_w, "WEATHER N/A", 4, 0);
+  }
+
+  drawExitAndLockButtons(canvas, canvas->width, canvas->height);
+
+  hudRail(canvas, shell_x + 20, lock_rect.x - 8, shell_y + 88, 0);
+  char updated[96];
+  formatDisplayDate(dashboard->generated_at, status, updated, sizeof(updated));
+  drawTextClipped(canvas, shell_x + 28, shell_y + 102, text_w, updated, 2, 0);
+}
+
+// Minimal binary PGM (P5) reader - matches exactly what writePgm() produces and what
+// ImageMagick emits by default for a .pgm target, no ASCII/comment handling needed for our own
+// asset pipeline. Returns a malloc'd grayscale buffer the caller must free(), or NULL on failure.
+unsigned char* readPgmP5(const char* path, int* out_w, int* out_h) {
+  FILE* file = fopen(path, "rb");
+  if (!file) return NULL;
+  char magic[3] = {0, 0, 0};
+  int width = 0, height = 0, maxval = 0;
+  if (fscanf(file, "%2s", magic) != 1 || strcmp(magic, "P5") != 0 ||
+      fscanf(file, "%d %d %d", &width, &height, &maxval) != 3 ||
+      width <= 0 || height <= 0 || maxval <= 0 || maxval > 255) {
+    fclose(file);
+    return NULL;
+  }
+  fgetc(file);  // single whitespace byte separating the header from the pixel data
+  const size_t count = static_cast<size_t>(width) * static_cast<size_t>(height);
+  unsigned char* pixels = static_cast<unsigned char*>(malloc(count));
+  if (!pixels) {
+    fclose(file);
+    return NULL;
+  }
+  if (fread(pixels, 1, count, file) != count) {
+    free(pixels);
+    fclose(file);
+    return NULL;
+  }
+  fclose(file);
+  *out_w = width;
+  *out_h = height;
+  return pixels;
+}
+
+// Nearest-neighbor "cover" blit: crops src to the dest box's aspect ratio (centered) before
+// scaling, so a photo of any resolution fills the tile with no letterboxing or distortion.
+void drawPgmCover(Canvas* canvas, int x, int y, int w, int h, const unsigned char* src, int sw, int sh) {
+  int crop_w = sw;
+  int crop_h = sh;
+  if (sw * h > sh * w) {
+    crop_w = sh * w / h;
+  } else {
+    crop_h = sw * h / w;
+  }
+  const int crop_x0 = (sw - crop_w) / 2;
+  const int crop_y0 = (sh - crop_h) / 2;
+  for (int dy = 0; dy < h; dy++) {
+    const int sy = crop_y0 + dy * crop_h / h;
+    for (int dx = 0; dx < w; dx++) {
+      const int sx = crop_x0 + dx * crop_w / w;
+      const unsigned char value = src[sy * sw + sx];
+      // Pre-inverted in dark mode so the whole-canvas flip at the end of
+      // drawCurrentDashboard() lands it back the right way round. Without this
+      // the one real image on the screen would come out as a negative.
+      setPixel(canvas, x + dx, y + dy, g_dark_mode ? static_cast<unsigned char>(255 - value) : value);
     }
   }
 }
 
-void drawStarRating(Canvas* canvas, int x, int y, int rating_tenths, int scale) {
-  int filled = (rating_tenths + 5) / 10;
-  if (filled < 0) filled = 0;
-  if (filled > 5) filled = 5;
-  const int star_w = 13 * scale;
-  const int gap = 4 * scale;
-  for (int i = 0; i < 5; i++) {
-    drawStarIcon(canvas, x + i * (star_w + gap), y, scale, i < filled);
+void drawPhotoTile(Canvas* canvas, int x, int y, int w, int h) {
+  // Consume taps here with a no-op action so applyTouchWithDebounce() doesn't fall through to
+  // its mirrored/rotated coordinate guesses (see applyTouchWithDebounce) and mistakenly land on
+  // whichever list card happens to overlap one of those guessed coordinates.
+  Rect tile_rect = {x, y, w, h};
+  addTouchRegion(tile_rect, kTouchNone, -1, -1, "", 0);
+
+  int pw = 0, ph = 0;
+  unsigned char* pixels = g_photo_path[0] ? readPgmP5(g_photo_path, &pw, &ph) : NULL;
+  if (pixels) {
+    const int inset = 4;
+    drawPgmCover(canvas, x + inset, y + inset, w - inset * 2, h - inset * 2, pixels, pw, ph);
+    free(pixels);
+    // The photo is the only tile whose fill reaches the border, so the cut
+    // corner has to be carved back out of it before the frame goes on top -
+    // otherwise the chamfer is a diagonal line sitting on a square photo.
+    // Goes through the same clamp hudFrame() itself applies, so a photo tile
+    // too small for a cut corner doesn't get one carved into it anyway.
+    carveTopRightNotch(canvas, x, y, w, h, kHudNotch, 255);
+  } else {
+    fprintf(stderr, "photo=missing path=%s\n", g_photo_path);
   }
+  hudFrame(canvas, x, y, w, h, kHudEdge, kHudCorner, kHudNotch, 0);
 }
 
-void drawRadialMetricTenths(Canvas* canvas, int x, int y, int w, int h, const char* label, int value, int target, const char* unit) {
-  strokeRect(canvas, x, y, w, h, 2, 0);
-  const int percent = target > 0 ? (value * 100) / target : 0;
-  const int clamped = percent < 0 ? 0 : (percent > 100 ? 100 : percent);
-  const int min_side = w < h ? w : h;
-  const int radius = w < 160 ? min_side / 4 : min_side / 3;
-  const int ring_thickness = w < 160 ? 10 : 14;
-  const int percent_scale = w < 160 ? 3 : 4;
-  const int cx = x + w / 2;
-  const int cy = y + h / 2 - 18;
-  circleTrack(canvas, cx, cy, radius, ring_thickness);
-  circleRing(canvas, cx, cy, radius, ring_thickness, clamped, 0);
+void drawAgendaTile(Canvas* canvas, int x, int y, int w, int h, const Dashboard* dashboard) {
+  hudFrame(canvas, x, y, w, h, kHudEdge, kHudCorner, kHudNotch, 0);
+  Rect tile_rect = {x, y, w, h};
+  addTouchRegion(tile_rect, kTouchNone, -1, -1, "", 0);
+  hudTitleTab(canvas, x + w / 2, y + 14, w - 24, "AGENDA", 4);
+  hudRail(canvas, x + 10, x + w - 10, y + 52, 0);
 
-  char percent_text[24];
-  snprintf(percent_text, sizeof(percent_text), "%d%%", clamped);
-  drawTextCentered(canvas, cx, cy - 21, 132, percent_text, percent_scale, 0);
-  drawTextCentered(canvas, cx, cy + 24, 132, label, 2, 0);
-
-  char value_text[32];
-  char target_text[32];
-  char metric[80];
-  formatTenths(value, value_text, sizeof(value_text));
-  formatTenths(target, target_text, sizeof(target_text));
-  const int metric_scale = w < 260 ? 2 : 3;
-  if (w < 260) snprintf(metric, sizeof(metric), "%s / %s", value_text, target_text);
-  else snprintf(metric, sizeof(metric), "%s / %s %s", value_text, target_text, unit);
-  drawTextCentered(canvas, cx, y + h - 38, w - 18, metric, metric_scale, 0);
-}
-
-void drawChallengeStreakCard(Canvas* canvas, int x, int y, int w, int h, int current_day) {
-  strokeRect(canvas, x, y, w, h, 3, 0);
-  const int title_scale = textWidth("STREAK", 4) <= w - 24 ? 4 : 3;
-  drawTextCentered(canvas, x + w / 2, y + 20, w - 24, "STREAK", title_scale, 0);
-  line(canvas, x + 14, y + 62, x + w - 14, y + 62, 2, 0);
-
-  char day_text[32];
-  snprintf(day_text, sizeof(day_text), "%d / 75", current_day);
-  drawTextCentered(canvas, x + w / 2, y + 84, w - 24, day_text, 3, 0);
-
-  const int columns = 5;
-  const int rows = 15;
-  const int min_gap = 3;
-  const int max_grid_w = w - 24;
-  const int max_grid_h = h - 172;
-  int square = (max_grid_h - (rows - 1) * min_gap) / rows;
-  const int square_by_w = max_grid_w / columns;
-  if (square > square_by_w) square = square_by_w;
-  if (square > 7) square -= 3;
-  else if (square > 5) square -= 2;
-  if (square < 4) square = 4;
-  int gap_x = columns > 1 ? (max_grid_w - columns * square) / (columns - 1) : 0;
-  if (gap_x < min_gap) gap_x = min_gap;
-  const int gap_y = min_gap;
-  const int grid_h = rows * square + (rows - 1) * gap_y;
-  const int grid_x = x + 12;
-  const int grid_y = y + 132 + (max_grid_h - grid_h) / 2;
-  const int clamped_day = current_day < 1 ? 1 : (current_day > 75 ? 75 : current_day);
-
-  for (int day = 1; day <= 75; day++) {
-    const int index = day - 1;
-    const int column = index % columns;
-    const int row = index / columns;
-    const int cell_x = grid_x + column * (square + gap_x);
-    const int cell_y = grid_y + row * (square + gap_y);
-    const int completed = day <= clamped_day;
-    const int current = day == clamped_day;
-    if (completed) {
-      fillRect(canvas, cell_x, cell_y, square, square, 0);
-    } else {
-      fillRect(canvas, cell_x, cell_y, square, square, current ? 212 : 244);
-      strokeRect(canvas, cell_x, cell_y, square, square, current ? 2 : 1, 0);
-    }
+  if (!dashboard->agenda_available) {
+    drawTextCentered(canvas, x + w / 2, y + h / 2 - 12, w - 24, "AGENDA N/A", 3, 0);
+    return;
+  }
+  if (dashboard->agenda_event_count == 0) {
+    drawTextCentered(canvas, x + w / 2, y + h / 2 - 12, w - 24, "NO EVENTS", 3, 0);
+    return;
   }
 
-  drawTextCentered(canvas, x + w / 2, y + h - 38, w - 24, "75 MEDIUM", 2, 0);
-}
-
-void drawImageCard(Canvas* canvas, int x, int y, int w, int h, const char* image_path, const char* fallback_path) {
-  strokeRect(canvas, x, y, w, h, 2, 0);
-  drawPgmImageCover(canvas, x + 2, y + 2, w - 4, h - 4, image_path, fallback_path, framebufferInvertForVisibleImage(1));
+  // Bigger rows/font than before (was scale 2 / 40px rows) and each line now
+  // carries the date, not just the time - the tile is also full-width and
+  // taller now, so there is room for it.
+  // 44 rather than 52: the backend now returns the next AGENDA_MAX_EVENTS
+  // events whatever their date, so the tile is what decides how many are
+  // actually seen, and at 52 a 319px tile fit only five. At scale 3 the
+  // glyphs are 21px tall, so this still leaves 23px of air between rows.
+  const int row_h = 44;
+  const int first_row_y = 62;     // just below the title rule at y + 52
+  const int row_text_h = 3 * 7;   // scale 3 x the 5x7 bitmap glyph height
+  const int bottom_pad = 8;
+  // Only the *last* row needs its glyph height; the rows before it need a full row_h
+  // of pitch. Dividing the whole tile by row_h charged a full row for the last one
+  // too, which dropped one event that fits and left a visibly empty strip at the
+  // bottom of the tile.
+  const int usable = h - first_row_y - row_text_h - bottom_pad;
+  const int max_rows = usable < 0 ? 0 : usable / row_h + 1;
+  const int shown = dashboard->agenda_event_count < max_rows ? dashboard->agenda_event_count : max_rows;
+  for (int i = 0; i < shown; i++) {
+    const AgendaEvent& event = dashboard->agenda_events[i];
+    char date_time[16];
+    agendaEventDateTime(&event, date_time, sizeof(date_time));
+    // 128 to match drawTextClipped()'s own buffer; the formatted row tops out at
+    // 2 + 15 + 1 + 48 characters, so nothing is lost by not being larger.
+    char row[128];
+    snprintf(row, sizeof(row), "- %-11s %.48s", date_time, event.title);
+    drawTextClipped(canvas, x + 18, y + first_row_y + i * row_h, w - 36, row, 3, 0);
+  }
 }
 
 void drawListCard(Canvas* canvas, int x, int y, int w, int h, const List* list, int list_index) {
-  strokeRect(canvas, x, y, w, h, 3, 0);
+  hudFrame(canvas, x, y, w, h, kHudEdge, kHudCorner, kHudNotch, 0);
   Rect card_rect = {x, y, w, h};
   addTouchRegion(card_rect, kTouchOpenList, list_index, -1, "", 0);
 
@@ -1392,8 +1286,8 @@ void drawListCard(Canvas* canvas, int x, int y, int w, int h, const List* list, 
   fprintf(stderr, "render=list-card-header index=%d title=%s rect=%d,%d,%d,%d\n", list_index, title, x, y, w, h);
 
   if (h < 112) {
-    drawTextCentered(canvas, x + w / 2, y + 14, w - 24, title, 4, 0);
-    line(canvas, x + 10, y + 52, x + w - 10, y + 52, 2, 0);
+    hudTitleTab(canvas, x + w / 2, y + 14, w - 24, title, 4);
+    hudRail(canvas, x + 10, x + w - 10, y + 52, 0);
     if (list->item_count > 0) {
       char row[128];
       char item_text[96];
@@ -1406,11 +1300,13 @@ void drawListCard(Canvas* canvas, int x, int y, int w, int h, const List* list, 
     return;
   }
 
-  drawTextCentered(canvas, x + w / 2, y + 14, w - 24, title, 4, 0);
-  line(canvas, x + 10, y + 52, x + w - 10, y + 52, 2, 0);
+  hudTitleTab(canvas, x + w / 2, y + 14, w - 24, title, 4);
+  hudRail(canvas, x + 10, x + w - 10, y + 52, 0);
   int row_capacity = (h - 124) / 42;
   if (row_capacity < 1) row_capacity = 1;
-  const int max_preview_rows = list_index == 1 ? 8 : 5;
+  // TASKS (0) and COMPRAS (1) are the two larger tiles in the current
+  // layout, so they get more preview rows than NOTAS (2).
+  const int max_preview_rows = (list_index == 0 || list_index == 1) ? 8 : 5;
   if (row_capacity > max_preview_rows) row_capacity = max_preview_rows;
   const int shown = list->item_count > row_capacity ? row_capacity : list->item_count;
   for (int i = 0; i < shown; i++) {
@@ -1431,91 +1327,20 @@ void drawListCard(Canvas* canvas, int x, int y, int w, int h, const List* list, 
   }
 }
 
-void drawMealPlannerTile(Canvas* canvas, int x, int y, int w, int h) {
-  strokeRect(canvas, x, y, w, h, 3, 0);
-  Rect tile_rect = {x, y, w, h};
-  addTouchRegion(tile_rect, kTouchOpenMealPlanner, -1, -1, "", 0);
-  drawPgmImageCover(canvas, x + 3, y + 3, w - 6, h - 6, kMealCoverPath, kMealCoverLocalPath, framebufferInvertForVisibleImage(0));
-  fillRect(canvas, x + 3, y + 3, w - 6, 50, 255);
-  line(canvas, x + 10, y + 53, x + w - 10, y + 53, 2, 0);
-  drawTextCentered(canvas, x + w / 2, y + 14, w - 24, "MEAL PLANNER", 4, 0);
-}
-
-void drawChallengeTile(Canvas* canvas, int x, int y, int size) {
-  strokeRect(canvas, x, y, size, size, 3, 0);
-  Rect tile_rect = {x, y, size, size};
-  addTouchRegion(tile_rect, kTouchOpenChallenge, -1, -1, "", 0);
-  const int art_x = x + 3;
-  const int art_y = y + 3;
-  const int art_w = size - 6;
-  const int art_h = size - 6;
-  if (art_h > 24) {
-    drawPgmImageCover(canvas, art_x, art_y, art_w, art_h, kChallengeCoverPath, kChallengeCoverLocalPath, framebufferInvertForVisibleImage(0));
-  }
-}
-
-void drawChevron(Canvas* canvas, const Rect& rect, int direction) {
-  const int cx = rect.x + rect.w / 2;
-  const int cy = rect.y + rect.h / 2;
-  const int half_w = 10;
-  const int half_h = 14;
-  if (direction < 0) {
-    line(canvas, cx + half_w, cy - half_h, cx - half_w, cy, 5, 0);
-    line(canvas, cx - half_w, cy, cx + half_w, cy + half_h, 5, 0);
-  } else {
-    line(canvas, cx - half_w, cy - half_h, cx + half_w, cy, 5, 0);
-    line(canvas, cx + half_w, cy, cx - half_w, cy + half_h, 5, 0);
-  }
-}
-
-int drawDaySwitchArrows(Canvas* canvas, int shell_x, int shell_y, int shell_w) {
-  (void)shell_w;
-  const int button_w = 64;
-  const int today_w = 118;
-  const int button_h = 52;
-  const int gap = 12;
-  Rect exit_rect = exitButtonRectForScreen(canvas->width, canvas->height);
-  Rect next_rect = {exit_rect.x - 104 - button_w, shell_y + 28, button_w, button_h};
-  Rect today_rect = {next_rect.x - gap - today_w, shell_y + 28, today_w, button_h};
-  Rect prev_rect = {today_rect.x - gap - button_w, shell_y + 28, button_w, button_h};
-  if (prev_rect.x < shell_x + 320) {
-    prev_rect.x = shell_x + 320;
-    today_rect.x = prev_rect.x + button_w + gap;
-    next_rect.x = today_rect.x + today_w + gap;
-  }
-
-  strokeRect(canvas, prev_rect.x, prev_rect.y, prev_rect.w, prev_rect.h, 2, 0);
-  drawChevron(canvas, prev_rect, -1);
-  addTouchRegion(prev_rect, kTouchPreviousDay, -1, -1, "", 0);
-
-  strokeRect(canvas, today_rect.x, today_rect.y, today_rect.w, today_rect.h, 2, 0);
-  drawTextCentered(canvas, today_rect.x + today_rect.w / 2, today_rect.y + 16, today_rect.w - 12, "TODAY", 2, 0);
-  addTouchRegion(today_rect, kTouchToday, -1, -1, "", 0);
-
-  strokeRect(canvas, next_rect.x, next_rect.y, next_rect.w, next_rect.h, 2, 0);
-  drawChevron(canvas, next_rect, 1);
-  addTouchRegion(next_rect, kTouchNextDay, -1, -1, "", 0);
-
-  return prev_rect.x;
-}
-
 void drawTopHeader(Canvas* canvas, const Dashboard* dashboard, const char* status, int shell_x, int shell_y, int shell_w) {
   const int header_h = 132;
   doubleRect(canvas, shell_x + 10, shell_y + 10, shell_w - 20, header_h, 0);
-  const int arrow_left = drawDaySwitchArrows(canvas, shell_x, shell_y, shell_w);
-  drawTextClipped(canvas, shell_x + 28, shell_y + 24, arrow_left - shell_x - 44, "DAILY OPS", 4, 0);
 
-  Rect exit_rect = exitButtonRectForScreen(canvas->width, canvas->height);
-  Rect exit_hit_rect = {exit_rect.x - 20, kKindleStatusBarHeight, exit_rect.w + 40, exit_rect.y - kKindleStatusBarHeight + exit_rect.h + 20};
-  strokeRect(canvas, exit_rect.x, exit_rect.y, exit_rect.w, exit_rect.h, 2, 0);
-  drawTextCentered(canvas, exit_rect.x + exit_rect.w / 2, exit_rect.y + 34, exit_rect.w - 16, "EXIT", 3, 0);
-  addTouchRegion(exit_hit_rect, kTouchExit, -1, -1, "", 0);
-  addTouchRegion(exit_rect, kTouchExit, -1, -1, "", 0);
+  const Rect lock_rect = lockButtonRectForScreen(canvas->width, canvas->height);
+  const int text_w = lock_rect.x - shell_x - 44;
+  drawTextClipped(canvas, shell_x + 28, shell_y + 24, text_w, g_title, 4, 0);
 
-  line(canvas, shell_x + 20, shell_y + 88, exit_rect.x - 8, shell_y + 88, 2, 0);
+  drawExitAndLockButtons(canvas, canvas->width, canvas->height);
+
+  hudRail(canvas, shell_x + 20, lock_rect.x - 8, shell_y + 88, 0);
   char updated[96];
   formatDisplayDate(dashboard->generated_at, status, updated, sizeof(updated));
-  drawTextClipped(canvas, shell_x + 28, shell_y + 102, exit_rect.x - shell_x - 44, updated, 2, 0);
+  drawTextClipped(canvas, shell_x + 28, shell_y + 102, text_w, updated, 2, 0);
 }
 
 void drawSubHeader(Canvas* canvas, int shell_x, int y, int shell_w, const char* title) {
@@ -1528,264 +1353,13 @@ void drawSubHeader(Canvas* canvas, int shell_x, int y, int shell_w, const char* 
 
   Rect back_rect = {shell_x + shell_w - 136, y + 14, 104, 52};
   Rect home_rect = {back_rect.x - 116, y + 14, 104, 52};
-  strokeRect(canvas, home_rect.x, home_rect.y, home_rect.w, home_rect.h, 2, 0);
+  hudFrame(canvas, home_rect.x, home_rect.y, home_rect.w, home_rect.h, kHudEdge, kHudCornerSmallButton, kHudNotchSmallButton, 0);
   drawTextCentered(canvas, home_rect.x + home_rect.w / 2, home_rect.y + 16, home_rect.w - 12, "HOME", 2, 0);
   addTouchRegion(home_rect, kTouchHome, -1, -1, "", 0);
 
-  strokeRect(canvas, back_rect.x, back_rect.y, back_rect.w, back_rect.h, 2, 0);
+  hudFrame(canvas, back_rect.x, back_rect.y, back_rect.w, back_rect.h, kHudEdge, kHudCornerSmallButton, kHudNotchSmallButton, 0);
   drawTextCentered(canvas, back_rect.x + back_rect.w / 2, back_rect.y + 16, back_rect.w - 12, "BACK", 2, 0);
   addTouchRegion(back_rect, kTouchBack, -1, -1, "", 0);
-}
-
-void drawMealPlannerDashboard(Canvas* canvas, const Dashboard* dashboard, const char* status) {
-  clearCanvas(canvas, 255);
-  clearTouchRegions();
-  g_last_screen_width = canvas->width;
-  g_last_screen_height = canvas->height;
-  const int shell_w = canvas->width;
-  const int shell_x = 0;
-  const int shell_y = kKindleStatusBarHeight;
-  const int shell_h = canvas->height - shell_y;
-  strokeRect(canvas, shell_x, shell_y, shell_w, shell_h, 3, 0);
-  drawTopHeader(canvas, dashboard, status, shell_x, shell_y, shell_w);
-
-  const int sub_y = shell_y + 10 + 132 + 8;
-  drawSubHeader(canvas, shell_x, sub_y, shell_w, "MEAL PLANNER");
-
-  const int cover_y = sub_y + 96;
-  strokeRect(canvas, shell_x + 18, cover_y, shell_w - 36, 188, 3, 0);
-  drawPgmImageCover(canvas, shell_x + 42, cover_y + 18, 250, 140, kMealCoverPath, kMealCoverLocalPath, framebufferInvertForVisibleImage(0));
-  drawTextClipped(canvas, shell_x + 320, cover_y + 32, shell_w - 352, "TODAY'S MEALS", 5, 0);
-  drawTextClipped(canvas, shell_x + 320, cover_y + 84, shell_w - 352, "EACH ROW OPENS", 3, 0);
-  drawTextClipped(canvas, shell_x + 320, cover_y + 118, shell_w - 352, "A RECIPE CARD", 3, 0);
-
-  const int recipes_card_y = cover_y + 206;
-  Rect recipes_rect = {shell_x + 18, recipes_card_y, shell_w - 36, 74};
-  strokeRect(canvas, recipes_rect.x, recipes_rect.y, recipes_rect.w, recipes_rect.h, 3, 0);
-  addTouchRegion(recipes_rect, kTouchOpenRecipes, -1, -1, "", 0);
-  drawTextClipped(canvas, recipes_rect.x + 20, recipes_rect.y + 18, recipes_rect.w - 260, "RECIPES", 5, 0);
-  char count_text[64];
-  snprintf(count_text, sizeof(count_text), "%d SAVED", dashboard->recipe_count);
-  drawTextClipped(canvas, recipes_rect.x + recipes_rect.w - 210, recipes_rect.y + 24, 180, count_text, 3, 0);
-
-  const int row_x = shell_x + 18;
-  const int row_w = shell_w - 36;
-  const int row_h = 82;
-  const int row_gap = 10;
-  const int first_y = recipes_card_y + 92;
-  if (dashboard->meal_plan_count == 0) {
-    Rect empty_rect = {row_x, first_y, row_w, 118};
-    strokeRect(canvas, empty_rect.x, empty_rect.y, empty_rect.w, empty_rect.h, 2, 0);
-    drawTextClipped(canvas, empty_rect.x + 18, empty_rect.y + 22, empty_rect.w - 36, "NO MEALS PLANNED", 4, 0);
-    drawTextClipped(canvas, empty_rect.x + 18, empty_rect.y + 66, empty_rect.w - 36, "SET TODAY'S MEAL PLAN VIA TELEGRAM", 2, 0);
-    return;
-  }
-  for (int i = 0; i < dashboard->meal_plan_count; i++) {
-    const int row_y = first_y + i * (row_h + row_gap);
-    if (row_y + row_h > shell_y + shell_h - 18) break;
-    const int recipe_index = dashboard->meal_plan_recipe_indices[i];
-    if (recipe_index < 0 || recipe_index >= dashboard->recipe_count) continue;
-    const RecipeRecord* recipe = &dashboard->recipes[recipe_index];
-    Rect row_rect = {row_x, row_y, row_w, row_h};
-    strokeRect(canvas, row_rect.x, row_rect.y, row_rect.w, row_rect.h, 2, 0);
-    addTouchRegion(row_rect, kTouchOpenMealPlanRecipe, -1, recipe_index, "", 0);
-    char meal_label[32];
-    snprintf(meal_label, sizeof(meal_label), "MEAL %d", i + 1);
-    drawTextClipped(canvas, row_x + 18, row_y + 14, 170, meal_label, 3, 0);
-    drawTextClipped(canvas, row_x + 208, row_y + 14, row_w - 360, recipe->title, 4, 0);
-    char macro_hint[96];
-    snprintf(macro_hint, sizeof(macro_hint), "%d CAL  C%d F%d P%d", recipe->calories, recipe->carbs, recipe->fat, recipe->protein);
-    drawTextClipped(canvas, row_x + 208, row_y + 52, row_w - 390, macro_hint, 2, 0);
-    drawStarRating(canvas, row_x + row_w - 190, row_y + 16, recipe->rating_tenths, 2);
-    drawTextClipped(canvas, row_x + row_w - 176, row_y + 52, 154, "[ RECIPE ]", 2, 0);
-  }
-}
-
-void drawRecipesDashboard(Canvas* canvas, const Dashboard* dashboard, const char* status) {
-  clearCanvas(canvas, 255);
-  clearTouchRegions();
-  g_last_screen_width = canvas->width;
-  g_last_screen_height = canvas->height;
-  const int shell_w = canvas->width;
-  const int shell_x = 0;
-  const int shell_y = kKindleStatusBarHeight;
-  const int shell_h = canvas->height - shell_y;
-  strokeRect(canvas, shell_x, shell_y, shell_w, shell_h, 3, 0);
-  drawTopHeader(canvas, dashboard, status, shell_x, shell_y, shell_w);
-
-  const int sub_y = shell_y + 10 + 132 + 8;
-  drawSubHeader(canvas, shell_x, sub_y, shell_w, "RECIPES");
-
-  const int gap = 10;
-  const int card_w = (shell_w - 36 - gap) / 2;
-  const int card_h = 132;
-  const int first_y = sub_y + 98;
-  for (int i = 0; i < dashboard->recipe_count && i < kMaxRecipes; i++) {
-    const int column = i % 2;
-    const int row = i / 2;
-    const int card_x = shell_x + 18 + column * (card_w + gap);
-    const int card_y = first_y + row * (card_h + gap);
-    if (card_y + card_h > shell_y + shell_h - 18) break;
-    Rect card_rect = {card_x, card_y, card_w, card_h};
-    strokeRect(canvas, card_rect.x, card_rect.y, card_rect.w, card_rect.h, 3, 0);
-    addTouchRegion(card_rect, kTouchOpenRecipe, -1, i, "", 0);
-    drawTextClipped(canvas, card_x + 14, card_y + 14, card_w - 28, dashboard->recipes[i].title, 3, 0);
-    line(canvas, card_x + 10, card_y + 54, card_x + card_w - 10, card_y + 54, 2, 0);
-    char macro_text[96];
-    snprintf(macro_text, sizeof(macro_text), "%d CAL C%d F%d P%d", dashboard->recipes[i].calories, dashboard->recipes[i].carbs, dashboard->recipes[i].fat, dashboard->recipes[i].protein);
-    drawTextClipped(canvas, card_x + 14, card_y + 72, card_w - 28, macro_text, 2, 0);
-    drawStarRating(canvas, card_x + 14, card_y + 102, dashboard->recipes[i].rating_tenths, 1);
-    drawTextClipped(canvas, card_x + card_w - 94, card_y + 104, 78, "[ OPEN ]", 2, 0);
-  }
-}
-
-void drawRecipeRecordDashboard(Canvas* canvas, const Dashboard* dashboard, const char* status, int recipe_index) {
-  clearCanvas(canvas, 255);
-  clearTouchRegions();
-  g_last_screen_width = canvas->width;
-  g_last_screen_height = canvas->height;
-  const int shell_w = canvas->width;
-  const int shell_x = 0;
-  const int shell_y = kKindleStatusBarHeight;
-  const int shell_h = canvas->height - shell_y;
-  strokeRect(canvas, shell_x, shell_y, shell_w, shell_h, 3, 0);
-  drawTopHeader(canvas, dashboard, status, shell_x, shell_y, shell_w);
-
-  if (recipe_index < 0 || recipe_index >= dashboard->recipe_count) recipe_index = 0;
-  const RecipeRecord* recipe = &dashboard->recipes[recipe_index];
-  const int sub_y = shell_y + 10 + 132 + 8;
-  drawSubHeader(canvas, shell_x, sub_y, shell_w, "RECIPE");
-
-  const int card_x = shell_x + 18;
-  const int card_y = sub_y + 98;
-  const int card_w = shell_w - 36;
-  const int card_h = shell_y + shell_h - card_y - 18;
-  strokeRect(canvas, card_x, card_y, card_w, card_h, 3, 0);
-  drawTextClipped(canvas, card_x + 20, card_y + 22, card_w - 40, recipe->title, 5, 0);
-  line(canvas, card_x + 14, card_y + 76, card_x + card_w - 14, card_y + 76, 2, 0);
-  drawTextClipped(canvas, card_x + 20, card_y + 86, 126, "RATING", 3, 0);
-  drawStarRating(canvas, card_x + 164, card_y + 84, recipe->rating_tenths, 2);
-
-  const int content_x = card_x + 20;
-  const int content_w = card_w - 40;
-  const int top_y = card_y + 126;
-  const int column_gap = 14;
-  const int photo_w = (content_w - column_gap) / 2;
-  const int photo_h = photo_w;
-  const int macro_x = content_x + photo_w + column_gap;
-  const int macro_w = content_w - photo_w - column_gap;
-  strokeRect(canvas, content_x, top_y, photo_w, photo_h, 2, 0);
-  drawRecipeLocalImage(canvas, content_x + 8, top_y + 8, photo_w - 16, photo_h - 16, recipe);
-
-  const int macro_gap = 8;
-  const int macro_box_h = (photo_h - macro_gap) / 2;
-  const int macro_box_w = (macro_w - macro_gap) / 2;
-  const char* labels[4] = {"CAL", "CARBS", "FAT", "PROT"};
-  const int values[4] = {recipe->calories, recipe->carbs, recipe->fat, recipe->protein};
-  for (int i = 0; i < 4; i++) {
-    const int column = i % 2;
-    const int row = i / 2;
-    const int box_x = macro_x + column * (macro_box_w + macro_gap);
-    const int box_y = top_y + row * (macro_box_h + macro_gap);
-    strokeRect(canvas, box_x, box_y, macro_box_w, macro_box_h, 2, 0);
-    drawTextCentered(canvas, box_x + macro_box_w / 2, box_y + 22, macro_box_w - 8, labels[i], 2, 0);
-    char value_text[24];
-    snprintf(value_text, sizeof(value_text), i == 0 ? "%d" : "%dG", values[i]);
-    drawTextCentered(canvas, box_x + macro_box_w / 2, box_y + 64, macro_box_w - 8, value_text, 4, 0);
-  }
-
-  const int ingredients_title_y = top_y + photo_h + 28;
-  drawTextClipped(canvas, content_x, ingredients_title_y, content_w, "INGREDIENTS", 3, 0);
-  const int ingredient_y = ingredients_title_y + 40;
-  const int ingredient_row_h = 34;
-  const int amount_w = 180;
-  int ingredients_shown = 0;
-  for (int i = 0; i < recipe->ingredient_count && i < kMaxRecipeIngredients; i++) {
-    const int row_y = ingredient_y + i * ingredient_row_h;
-    if (row_y + ingredient_row_h > card_y + card_h - 112) break;
-    drawTextClipped(canvas, content_x + 4, row_y, content_w - amount_w - 12, recipe->ingredients[i].name, 3, 0);
-    drawTextClipped(canvas, card_x + card_w - amount_w - 20, row_y, amount_w, recipe->ingredients[i].amount, 3, 0);
-    ingredients_shown++;
-  }
-  const int steps_y = ingredient_y + ingredients_shown * ingredient_row_h + 24;
-  if (steps_y + 58 < card_y + card_h) {
-    drawTextClipped(canvas, content_x, steps_y, content_w, "STEPS", 3, 0);
-    drawTextWrapped(canvas, content_x, steps_y + 36, content_w, recipe->instructions, 2, 0, 4);
-  }
-}
-
-void drawRecipeDashboard(Canvas* canvas, const Dashboard* dashboard, const char* status, int recipe_index) {
-  clearCanvas(canvas, 255);
-  clearTouchRegions();
-  g_last_screen_width = canvas->width;
-  g_last_screen_height = canvas->height;
-  const int shell_w = canvas->width;
-  const int shell_x = 0;
-  const int shell_y = kKindleStatusBarHeight;
-  const int shell_h = canvas->height - shell_y;
-  strokeRect(canvas, shell_x, shell_y, shell_w, shell_h, 3, 0);
-  drawTopHeader(canvas, dashboard, status, shell_x, shell_y, shell_w);
-
-  if (recipe_index < 0 || recipe_index >= kMealPlanCount) recipe_index = 0;
-  const MealPlanEntry* meal = &kMealPlan[recipe_index];
-  const int sub_y = shell_y + 10 + 132 + 8;
-  drawSubHeader(canvas, shell_x, sub_y, shell_w, "RECIPE");
-
-  const int card_x = shell_x + 18;
-  const int card_y = sub_y + 98;
-  const int card_w = shell_w - 36;
-  const int card_h = shell_y + shell_h - card_y - 18;
-  strokeRect(canvas, card_x, card_y, card_w, card_h, 3, 0);
-  drawTextClipped(canvas, card_x + 20, card_y + 22, card_w - 40, meal->title, 5, 0);
-  line(canvas, card_x + 14, card_y + 76, card_x + card_w - 14, card_y + 76, 2, 0);
-  drawTextClipped(canvas, card_x + 20, card_y + 92, card_w - 40, meal->recipe, 3, 0);
-
-  const int content_x = card_x + 20;
-  const int content_w = card_w - 40;
-  const int top_y = card_y + 142;
-  const int column_gap = 14;
-  const int photo_w = (content_w - column_gap) / 2;
-  const int photo_h = photo_w;
-  const int macro_x = content_x + photo_w + column_gap;
-  const int macro_w = content_w - photo_w - column_gap;
-  strokeRect(canvas, content_x, top_y, photo_w, photo_h, 2, 0);
-  drawPgmImageCover(canvas, content_x + 8, top_y + 8, photo_w - 16, photo_h - 16, meal->photo_path, meal->photo_fallback_path, framebufferInvertForVisibleImage(1));
-
-  const int macro_gap = 8;
-  const int macro_box_h = (photo_h - macro_gap) / 2;
-  const int macro_box_w = (macro_w - macro_gap) / 2;
-  const char* labels[4] = {"CAL", "CARBS", "FAT", "PROT"};
-  const int values[4] = {meal->calories, meal->carbs, meal->fat, meal->protein};
-  for (int i = 0; i < 4; i++) {
-    const int column = i % 2;
-    const int row = i / 2;
-    const int box_x = macro_x + column * (macro_box_w + macro_gap);
-    const int box_y = top_y + row * (macro_box_h + macro_gap);
-    strokeRect(canvas, box_x, box_y, macro_box_w, macro_box_h, 2, 0);
-    drawTextCentered(canvas, box_x + macro_box_w / 2, box_y + 22, macro_box_w - 8, labels[i], 2, 0);
-    char value_text[24];
-    snprintf(value_text, sizeof(value_text), i == 0 ? "%d" : "%dG", values[i]);
-    drawTextCentered(canvas, box_x + macro_box_w / 2, box_y + 64, macro_box_w - 8, value_text, 4, 0);
-  }
-
-  const int ingredients_title_y = top_y + photo_h + 28;
-  drawTextClipped(canvas, content_x, ingredients_title_y, content_w, "INGREDIENTS", 3, 0);
-  const int ingredient_y = ingredients_title_y + 42;
-  const int ingredient_row_h = 38;
-  const int amount_w = 160;
-  int ingredients_shown = 0;
-  for (int i = 0; i < meal->ingredient_count && i < kMaxRecipeIngredients; i++) {
-    const int row_y = ingredient_y + i * ingredient_row_h;
-    if (row_y + ingredient_row_h > card_y + card_h - 122) break;
-    drawTextClipped(canvas, card_x + 24, row_y, card_w - amount_w - 52, meal->ingredients[i].name, 3, 0);
-    drawTextClipped(canvas, card_x + card_w - amount_w - 20, row_y, amount_w, meal->ingredients[i].amount, 3, 0);
-    ingredients_shown++;
-  }
-  const int steps_y = ingredient_y + ingredients_shown * ingredient_row_h + 24;
-  if (steps_y + 68 < card_y + card_h) {
-    drawTextClipped(canvas, content_x, steps_y, content_w, "STEPS", 3, 0);
-    drawTextWrapped(canvas, content_x, steps_y + 44, content_w, meal->steps, 3, 0, 3);
-  }
 }
 
 void drawFullListDashboard(Canvas* canvas, const Dashboard* dashboard, int list_index, const char* status) {
@@ -1797,7 +1371,7 @@ void drawFullListDashboard(Canvas* canvas, const Dashboard* dashboard, int list_
   const int shell_x = 0;
   const int shell_y = kKindleStatusBarHeight;
   const int shell_h = canvas->height - shell_y;
-  strokeRect(canvas, shell_x, shell_y, shell_w, shell_h, 3, 0);
+  hudFrame(canvas, shell_x, shell_y, shell_w, shell_h, 3, kHudCorner * 2, kHudNotch + 8, 0);
 
   if (list_index < 0 || list_index >= dashboard->list_count) list_index = 0;
   const List* list = &dashboard->lists[list_index];
@@ -1820,7 +1394,11 @@ void drawFullListDashboard(Canvas* canvas, const Dashboard* dashboard, int list_
   for (int i = 0; i < shown; i++) {
     const int row_y = first_y + i * (row_h + row_gap);
     Rect row_rect = {row_x, row_y, row_w, row_h};
-    strokeRect(canvas, row_rect.x, row_rect.y, row_rect.w, row_rect.h, 2, 0);
+    hudFrame(canvas, row_rect.x, row_rect.y, row_rect.w, row_rect.h, kHudEdge, kHudCornerRow, kHudNotchRow, 0);
+    // Solid rail down the left of each row. It is what makes a stack of rows
+    // read as a HUD list rather than a column of boxes, and it sits in the
+    // 18px of padding before the text, so nothing shifts.
+    fillRect(canvas, row_rect.x, row_rect.y, 7, row_rect.h, 0);
     addTouchRegion(row_rect, kTouchToggleItem, list_index, i, list->items[i].id, list->items[i].done);
     char row[160];
     char item_text[96];
@@ -1830,68 +1408,15 @@ void drawFullListDashboard(Canvas* canvas, const Dashboard* dashboard, int list_
   }
 }
 
-void drawChallengeDashboard(Canvas* canvas, const Dashboard* dashboard, const char* status) {
-  clearCanvas(canvas, 255);
-  clearTouchRegions();
-  g_last_screen_width = canvas->width;
-  g_last_screen_height = canvas->height;
-  const int shell_w = canvas->width;
-  const int shell_x = 0;
-  const int shell_y = kKindleStatusBarHeight;
-  const int shell_h = canvas->height - shell_y;
-  strokeRect(canvas, shell_x, shell_y, shell_w, shell_h, 3, 0);
-  drawTopHeader(canvas, dashboard, status, shell_x, shell_y, shell_w);
-
-  const int sub_y = shell_y + 10 + 132 + 8;
-  drawSubHeader(canvas, shell_x, sub_y, shell_w, "75 DAY CHALLENGE");
-  char day_text[40];
-  snprintf(day_text, sizeof(day_text), "DAY %d // CURRENT DAY", dashboard->challenge_day);
-  drawTextClipped(canvas, shell_x + 36, sub_y + 88, shell_w - 72, day_text, 3, 0);
-
-  const int gap = 10;
-  const int content_x = shell_x + 18;
-  const int content_y = sub_y + 132;
-  const int content_w = shell_w - 36;
-  const int content_h = shell_y + shell_h - content_y - 18;
-  const int center_w = (content_w - gap * 2) / 4;
-  const int side_w = (content_w - center_w - gap * 2) / 2;
-  const int left_x = content_x;
-  const int center_x = left_x + side_w + gap;
-  const int right_x = center_x + center_w + gap;
-  const int card_h = (content_h - gap * 2) / 3;
-
-  drawRadialMetric(canvas, left_x, content_y, side_w, card_h, "PROTEIN", dashboard->protein_g, 100, "g");
-  drawRadialMetricTenths(canvas, left_x, content_y + card_h + gap, side_w, card_h, "WATER", dashboard->water_tenths, dashboard->water_target_tenths, "L");
-  drawRadialMetricTenths(canvas, left_x, content_y + (card_h + gap) * 2, side_w, card_h, "SLEEP", dashboard->sleep_tenths, dashboard->sleep_target_tenths, "h");
-  drawChallengeStreakCard(canvas, center_x, content_y, center_w, content_h, dashboard->challenge_day);
-  drawRadialMetric(canvas, right_x, content_y, side_w, card_h, "WORKOUT", dashboard->workouts, dashboard->workout_target, "done");
-  drawRadialMetric(canvas, right_x, content_y + card_h + gap, side_w, card_h, "STEPS", dashboard->steps, dashboard->steps_target, dashboard->steps_unit);
-  drawRadialMetric(canvas, right_x, content_y + (card_h + gap) * 2, side_w, card_h, "CALORIES", dashboard->calories, dashboard->calories_target, dashboard->calories_unit);
-}
-
 void drawCurrentDashboard(Canvas* canvas, const Dashboard* dashboard, const char* status) {
-  if (g_active_challenge) {
-    drawChallengeDashboard(canvas, dashboard, status);
-    return;
-  }
-  if (g_active_recipe >= 0) {
-    if (g_active_recipe_library) drawRecipeRecordDashboard(canvas, dashboard, status, g_active_recipe);
-    else drawRecipeDashboard(canvas, dashboard, status, g_active_recipe);
-    return;
-  }
-  if (g_active_recipes) {
-    drawRecipesDashboard(canvas, dashboard, status);
-    return;
-  }
-  if (g_active_meal_planner) {
-    drawMealPlannerDashboard(canvas, dashboard, status);
-    return;
-  }
   if (g_active_list >= 0 && g_active_list < dashboard->list_count) {
     drawFullListDashboard(canvas, dashboard, g_active_list, status);
-    return;
+  } else {
+    drawBitmapDashboard(canvas, dashboard, status);
   }
-  drawBitmapDashboard(canvas, dashboard, status);
+  // The single place dark mode happens. Every screen goes through here, so a
+  // new view cannot forget to be dark.
+  if (g_dark_mode) invertCanvas(canvas);
 }
 
 Rect exitButtonRectForScreen(int width, int) {
@@ -1902,6 +1427,18 @@ Rect exitButtonRectForScreen(int width, int) {
   rect.h = 96;
   rect.x = shell_x + shell_w - rect.w - 28;
   rect.y = kKindleStatusBarHeight + 20;
+  return rect;
+}
+
+// Sits immediately to EXIT's left, same row, same height - a habit formed in
+// either header (bitmap dashboard or full-list view) carries to the other.
+Rect lockButtonRectForScreen(int width, int height) {
+  const Rect exit_rect = exitButtonRectForScreen(width, height);
+  Rect rect;
+  rect.w = 96;
+  rect.h = exit_rect.h;
+  rect.x = exit_rect.x - rect.w - 16;
+  rect.y = exit_rect.y;
   return rect;
 }
 
@@ -1930,6 +1467,28 @@ void addTouchRegion(Rect rect, TouchAction action, int list_index, int item_inde
   region->item_done = item_done;
 }
 
+// Drawn identically by both header variants (the bitmap dashboard's weather bar and the
+// full-list view's top header), one call each, so the two can't drift apart the way the
+// hand-copied EXIT block they replaced already had once (see the small-HUD-constant cleanup a
+// commit ago). Layout math (text widths, the rail's end point) still lives in each header, keyed
+// off lockButtonRectForScreen() directly - this only draws the two buttons and registers their
+// touch regions.
+void drawExitAndLockButtons(Canvas* canvas, int width, int height) {
+  const Rect exit_rect = exitButtonRectForScreen(width, height);
+  const Rect exit_hit_rect = {exit_rect.x - 20, kKindleStatusBarHeight, exit_rect.w + 40, exit_rect.y - kKindleStatusBarHeight + exit_rect.h + 20};
+  hudFrame(canvas, exit_rect.x, exit_rect.y, exit_rect.w, exit_rect.h, kHudEdge, kHudCornerButton, kHudNotchButton, 0);
+  drawTextCentered(canvas, exit_rect.x + exit_rect.w / 2, exit_rect.y + 34, exit_rect.w - 16, "EXIT", 3, 0);
+  addTouchRegion(exit_hit_rect, kTouchExit, -1, -1, "", 0);
+  addTouchRegion(exit_rect, kTouchExit, -1, -1, "", 0);
+
+  const Rect lock_rect = lockButtonRectForScreen(width, height);
+  const Rect lock_hit_rect = {lock_rect.x - 16, kKindleStatusBarHeight, lock_rect.w + 32, lock_rect.y - kKindleStatusBarHeight + lock_rect.h + 20};
+  hudFrame(canvas, lock_rect.x, lock_rect.y, lock_rect.w, lock_rect.h, kHudEdge, kHudCornerButton, kHudNotchButton, 0);
+  drawPadlockIcon(canvas, lock_rect.x + lock_rect.w / 2, lock_rect.y + lock_rect.h / 2 + 4, 44, g_screen_locked, 0);
+  addTouchRegion(lock_hit_rect, kTouchToggleLock, -1, -1, "", 0);
+  addTouchRegion(lock_rect, kTouchToggleLock, -1, -1, "", 0);
+}
+
 [[maybe_unused]] int applyTouchAt(int x, int y) {
   for (int i = g_touch_region_count - 1; i >= 0; i--) {
     TouchRegion* region = &g_touch_regions[i];
@@ -1954,57 +1513,38 @@ void drawBitmapDashboard(Canvas* canvas, const Dashboard* dashboard, const char*
   const int shell_x = 0;
   const int shell_y = kKindleStatusBarHeight;
   const int shell_h = canvas->height - shell_y;
-  strokeRect(canvas, shell_x, shell_y, shell_w, shell_h, 3, 0);
+  hudFrame(canvas, shell_x, shell_y, shell_w, shell_h, 3, kHudCorner * 2, kHudNotch + 8, 0);
 
   const int header_h = 132;
-  doubleRect(canvas, shell_x + 10, shell_y + 10, shell_w - 20, header_h, 0);
-  const int arrow_left = drawDaySwitchArrows(canvas, shell_x, shell_y, shell_w);
-  drawTextClipped(canvas, shell_x + 28, shell_y + 24, arrow_left - shell_x - 44, "DAILY OPS", 4, 0);
-  Rect exit_rect = exitButtonRectForScreen(canvas->width, canvas->height);
-  Rect exit_hit_rect = {exit_rect.x - 20, kKindleStatusBarHeight, exit_rect.w + 40, exit_rect.y - kKindleStatusBarHeight + exit_rect.h + 20};
-  strokeRect(canvas, exit_rect.x, exit_rect.y, exit_rect.w, exit_rect.h, 2, 0);
-  drawTextCentered(canvas, exit_rect.x + exit_rect.w / 2, exit_rect.y + 34, exit_rect.w - 16, "EXIT", 3, 0);
-  addTouchRegion(exit_hit_rect, kTouchExit, -1, -1, "", 0);
-  addTouchRegion(exit_rect, kTouchExit, -1, -1, "", 0);
-  line(canvas, shell_x + 20, shell_y + 88, exit_rect.x - 8, shell_y + 88, 2, 0);
-  char updated[96];
-  formatDisplayDate(dashboard->generated_at, status, updated, sizeof(updated));
-  drawTextClipped(canvas, shell_x + 28, shell_y + 102, exit_rect.x - shell_x - 44, updated, 2, 0);
+  drawWeatherBar(canvas, dashboard, status, shell_x, shell_y, shell_w, header_h);
 
   const int gap = 8;
-  const int stat_y = shell_y + 10 + header_h + gap;
-  const int stat_h = shell_h < 900 ? 220 : 252;
-  const int stat_w = (shell_w - 20 - gap * 2) / 3;
-  drawImageCard(canvas, shell_x + 10, stat_y, stat_w, stat_h, kProfileCardPath, kProfileCardLocalPath);
-  drawRadialMetric(canvas, shell_x + 10 + stat_w + gap, stat_y, stat_w, stat_h, "STEPS", dashboard->steps, dashboard->steps_target, dashboard->steps_unit);
-  drawRadialMetric(canvas, shell_x + 10 + (stat_w + gap) * 2, stat_y, stat_w, stat_h, "CALORIES", dashboard->calories, dashboard->calories_target, dashboard->calories_unit);
+  const int grid_y = shell_y + 10 + header_h + gap;
+  // No separate footer bar anymore - that space goes to AGENDA instead, which
+  // is meant to be the bigger area now (full width, more/taller event rows).
+  const int lower_h = shell_y + shell_h - grid_y - 10;
+  const int agenda_h = (lower_h * 2) / 5;
+  const int middle_h = lower_h - agenda_h - gap;
+  const int agenda_y = grid_y + middle_h + gap;
 
-  const int footer_h = 44;
-  const int lists_y = stat_y + stat_h + gap;
-  const int lists_h = shell_y + shell_h - lists_y - footer_h - gap - 10;
-  const int list_w = (shell_w - 20 - gap) / 2;
-  if (dashboard->list_count > 0) {
-    int challenge_side = list_w;
-    if (lists_h < challenge_side + 128) challenge_side = lists_h - 128;
-    if (challenge_side < 160) challenge_side = 160;
-    const int challenge_gap = gap;
-    const int chores_h = lists_h - challenge_side - challenge_gap;
-    drawListCard(canvas, shell_x + 10, lists_y, list_w, chores_h, &dashboard->lists[0], 0);
-    drawChallengeTile(canvas, shell_x + 10, lists_y + chores_h + challenge_gap, challenge_side);
-  }
-  if (dashboard->list_count > 1) {
-    const int right_x = shell_x + 10 + list_w + gap;
-    int challenge_side = list_w;
-    if (lists_h < challenge_side + 128) challenge_side = lists_h - 128;
-    if (challenge_side < 160) challenge_side = 160;
-    int meal_tile_h = lists_h - challenge_side - gap;
-    const int grocery_h = lists_h - meal_tile_h - gap;
-    drawMealPlannerTile(canvas, right_x, lists_y, list_w, meal_tile_h);
-    drawListCard(canvas, right_x, lists_y + meal_tile_h + gap, list_w, grocery_h, &dashboard->lists[1], 1);
-  }
+  const int col_w = (shell_w - 20 - gap) / 2;
+  const int left_x = shell_x + 10;
+  const int right_x = left_x + col_w + gap;
 
-  doubleRect(canvas, shell_x + 10, shell_y + shell_h - footer_h - 10, shell_w - 20, footer_h, 0);
-  drawTextClipped(canvas, shell_x + 28, shell_y + shell_h - footer_h - 2, shell_w - 56, "TELEGRAM UPDATES LISTS // AUTO REFRESH 15M", 3, 0);
+  // Asymmetric split per column, matching the hand-drawn layout: GIF (small)
+  // over SHOPPING (big) on the left, TASKS (big) over NOTES (small) on the
+  // right - each column's own divider sits at a different height on purpose.
+  const int gif_h = (middle_h * 2) / 5;
+  const int shopping_h = middle_h - gif_h - gap;
+  const int tasks_h = (middle_h * 3) / 5;
+  const int notes_h = middle_h - tasks_h - gap;
+
+  drawPhotoTile(canvas, left_x, grid_y, col_w, gif_h);
+  if (dashboard->list_count > 0) drawListCard(canvas, right_x, grid_y, col_w, tasks_h, &dashboard->lists[0], 0);
+  if (dashboard->list_count > 1) drawListCard(canvas, left_x, grid_y + gif_h + gap, col_w, shopping_h, &dashboard->lists[1], 1);
+  if (dashboard->list_count > 2) drawListCard(canvas, right_x, grid_y + tasks_h + gap, col_w, notes_h, &dashboard->lists[2], 2);
+
+  drawAgendaTile(canvas, shell_x + 10, agenda_y, shell_w - 20, agenda_h, dashboard);
 }
 
 int writePgm(const char* path, const Canvas* canvas) {
@@ -2035,26 +1575,45 @@ struct TouchInput {
   int has_x;
   int has_y;
   int was_down;
-  long last_action_ms;
+  long long last_action_ms;
+  // The physical power button's input device, if one was found - separate from devices[]
+  // above, which only ever holds touchscreens (initTouchInput() requires an ABS X/Y range
+  // to keep one open). -1 if none was found. Never grabbed: see pollPowerButtonUnlock().
+  int power_fd;
 };
 
-long nowMs() {
-  timeval tv;
-  gettimeofday(&tv, NULL);
-  return tv.tv_sec * 1000L + tv.tv_usec / 1000L;
-}
-
 int applyTouchWithDebounce(TouchInput* input) {
-  const long now = nowMs();
+  // Use monotonicMs() (long long), not a hand-rolled long-based clock: tv_sec * 1000 for a
+  // real epoch timestamp overflows a 32-bit long on this ARM target, wrapping negative and
+  // making every debounce check below pass trivially, which permanently drops all touches.
+  const long long now = monotonicMs();
   if (now - input->last_action_ms < 700) return 0;
   const int w = g_last_screen_width;
   const int h = g_last_screen_height;
   const int x = input->x;
   const int y = input->y;
 
-  if (x >= w - 280 && y >= kKindleStatusBarHeight && y <= kKindleStatusBarHeight + 160) {
+  if (g_screen_locked) {
+    // Every touch is inert while locked - deliberately including the lock button itself.
+    // Unlocking only happens via the physical power button (see pollPowerButtonUnlock()):
+    // if tapping the same pixels that locked the screen could also unlock it, that corner
+    // of the touchscreen would still be "live", and an incidental brush while wiping the
+    // screen or carrying the Kindle around would undo the lock without anyone meaning to.
+    fprintf(stderr, "input=locked x=%d y=%d\n", x, y);
+    return 0;
+  }
+
+  // Coarse EXIT fallback, checked ahead of the registered regions so a badly scaled
+  // touch can always quit. Bound it to the button's own rect plus a margin instead of
+  // a fixed 280x160 block: that block reached down to y = kKindleStatusBarHeight + 160
+  // and, with the current layout, overlapped the top edge of the CHORES card, so taps
+  // meant for the card fired EXIT.
+  const Rect exit_rect = exitButtonRectForScreen(w, h);
+  const int exit_pad = 24;
+  if (x >= exit_rect.x - exit_pad && x <= exit_rect.x + exit_rect.w + exit_pad &&
+      y >= kKindleStatusBarHeight && y <= exit_rect.y + exit_rect.h + exit_pad) {
     g_pending_action = kTouchExit;
-    setPendingTouchRect(exitButtonRectForScreen(w, h));
+    setPendingTouchRect(exit_rect);
   } else if (!applyTouchAt(x, y) &&
              !applyTouchAt(w - 1 - x, y) &&
              !applyTouchAt(x, h - 1 - y) &&
@@ -2069,6 +1628,7 @@ int applyTouchWithDebounce(TouchInput* input) {
   g_pending_touch_x = x;
   g_pending_touch_y = y;
   input->last_action_ms = now;
+  wakeFrontlightOnTouch();
   return 1;
 }
 
@@ -2080,6 +1640,16 @@ int readAbsRange(int fd, int code, int* minimum, int* maximum) {
   *minimum = abs_info.minimum;
   *maximum = abs_info.maximum;
   return 1;
+}
+
+// EVIOCGBIT capability query, the same mechanism evtest/libinput use to ask a device "do you
+// ever send this key" without opening it exclusively or waiting for one to arrive - matches
+// readAbsRange() just above, but for a specific EV_KEY code instead of an ABS axis.
+int deviceHasKey(int fd, int key_code) {
+  unsigned long bits[(KEY_MAX / (sizeof(unsigned long) * 8)) + 1];
+  memset(bits, 0, sizeof(bits));
+  if (ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(bits)), bits) < 0) return 0;
+  return (bits[key_code / (sizeof(unsigned long) * 8)] >> (key_code % (sizeof(unsigned long) * 8))) & 1;
 }
 
 int scaleAbsValue(int value, int minimum, int maximum, int screen_size) {
@@ -2094,6 +1664,7 @@ void initTouchInput(TouchInput* input) {
   memset(input, 0, sizeof(*input));
   input->x = -1;
   input->y = -1;
+  input->power_fd = -1;
   for (int i = 0; i < 16 && input->count < 16; i++) {
     char path[48];
     snprintf(path, sizeof(path), "/dev/input/event%d", i);
@@ -2109,7 +1680,18 @@ void initTouchInput(TouchInput* input) {
                           readAbsRange(fd, ABS_MT_POSITION_Y, &device->min_y, &device->max_y);
 
     if (!device->has_x_range || !device->has_y_range) {
-      close(fd);
+      // Not a touchscreen. Before giving up on it, check whether it is the physical power
+      // button - the one hardware control every Kindle has, and the only way to unlock the
+      // screen (see pollPowerButtonUnlock()). Left ungrabbed on purpose: this fd is a second,
+      // passive reader alongside whatever the Kindle's own powerd already has open, so the
+      // normal sleep/wake behaviour of that button is completely unaffected by our also
+      // noticing the same press.
+      if (input->power_fd < 0 && deviceHasKey(fd, KEY_POWER)) {
+        input->power_fd = fd;
+        fprintf(stderr, "input=power-button path=%s\n", path);
+      } else {
+        close(fd);
+      }
       continue;
     }
 
@@ -2118,7 +1700,7 @@ void initTouchInput(TouchInput* input) {
             path, device->grabbed, device->min_x, device->max_x, device->min_y, device->max_y);
     input->count++;
   }
-  fprintf(stderr, "input=opened count=%d\n", input->count);
+  fprintf(stderr, "input=opened count=%d power_button=%d\n", input->count, input->power_fd >= 0);
 }
 
 void closeTouchInput(TouchInput* input) {
@@ -2127,6 +1709,10 @@ void closeTouchInput(TouchInput* input) {
     close(input->devices[i].fd);
   }
   input->count = 0;
+  if (input->power_fd >= 0) {
+    close(input->power_fd);
+    input->power_fd = -1;
+  }
 }
 
 int pollExitTouch(TouchInput* input) {
@@ -2174,6 +1760,29 @@ int pollExitTouch(TouchInput* input) {
   }
   return 0;
 }
+
+// The only way to clear g_screen_locked. Deliberately not routed through
+// applyTouchWithDebounce() or any touch-region machinery - this is a hardware key, not a
+// point on the screen, and the whole reason it exists is that a touch can't do this job (see
+// the comment on that early return in applyTouchWithDebounce()). Sets g_pending_action and
+// leaves the actual state change to handlePendingTouch(), like every other action, so the
+// main loop's existing "an action is pending, handle it and redraw" plumbing needs no changes.
+int pollPowerButtonUnlock(TouchInput* input) {
+  if (!input || input->power_fd < 0) return 0;
+  int unlocked = 0;
+  while (1) {
+    input_event event;
+    const ssize_t bytes = read(input->power_fd, &event, sizeof(event));
+    if (bytes != sizeof(event)) break;
+    // value == 1 is the press (key-down); 0 is release, 2 is autorepeat while held. Acting
+    // on press means one tap of the button is enough - no need to wait for release.
+    if (event.type == EV_KEY && event.code == KEY_POWER && event.value == 1 && g_screen_locked) {
+      g_pending_action = kTouchHardwareUnlock;
+      unlocked = 1;
+    }
+  }
+  return unlocked;
+}
 #else
 struct TouchInput {
   int unused;
@@ -2182,6 +1791,7 @@ struct TouchInput {
 void initTouchInput(TouchInput*) {}
 void closeTouchInput(TouchInput*) {}
 [[maybe_unused]] int pollExitTouch(TouchInput*) { return 0; }
+[[maybe_unused]] int pollPowerButtonUnlock(TouchInput*) { return 0; }
 #endif
 
 #ifdef __linux__
@@ -2306,12 +1916,13 @@ void flashTouchRectOnFramebuffer(Rect rect) {
   const int top = rect.y < kKindleStatusBarHeight ? kKindleStatusBarHeight : rect.y;
   const int right = rect.x + rect.w > static_cast<int>(vinfo.xres) ? static_cast<int>(vinfo.xres) : rect.x + rect.w;
   const int bottom = rect.y + rect.h > static_cast<int>(vinfo.yres) ? static_cast<int>(vinfo.yres) : rect.y + rect.h;
+  // No msync() around these writes, for the same reason as renderToFramebuffer(): fbdev mmap
+  // writes land directly in device memory (there is no page cache to flush) and MS_SYNC blocks
+  // forever on this hardware's driver. Leaving it here would hang the app on the first tap.
   invertFramebufferArea(fb, &vinfo, &finfo, left, top, right, bottom, 0);
-  msync(fb, screensize, MS_SYNC);
   system("eips '' >/dev/null 2>&1 || true");
   usleep(120000);
   invertFramebufferArea(fb, &vinfo, &finfo, left, top, right, bottom, 0);
-  msync(fb, screensize, MS_SYNC);
   munmap(fb, screensize);
   close(fd);
   system("eips '' >/dev/null 2>&1 || true");
@@ -2361,13 +1972,18 @@ int renderToFramebuffer(const Dashboard* dashboard, const char* status, const ch
     writePgm(save_pgm, &canvas);
     fprintf(stderr, "render=save-pgm %s width=%d height=%d\n", save_pgm, canvas.width, canvas.height);
   }
+  fprintf(stderr, "render=framebuffer writing_pixels screensize=%ld\n", screensize);
   for (int y = kKindleStatusBarHeight; y < canvas.height; y++) {
     for (int x = 0; x < canvas.width; x++) putFramebufferPixel(fb, &vinfo, &finfo, x, y, canvas.pixels[y * canvas.width + x]);
   }
+  fprintf(stderr, "render=framebuffer pixels_written\n");
   free(canvas.pixels);
-  msync(fb, screensize, MS_SYNC);
+  // No msync() here: writes to an mmap'd /dev/fb0 region land directly in device memory on
+  // fbdev drivers (there is no page cache to flush), and MS_SYNC blocks indefinitely on this
+  // hardware's framebuffer driver, hanging the render forever.
   munmap(fb, screensize);
   close(fd);
+  fprintf(stderr, "render=framebuffer refreshing_eips\n");
   system("eips '' >/dev/null 2>&1 || true");
   fprintf(stderr, "render=framebuffer ok width=%d height=%d bpp=%d\n", static_cast<int>(vinfo.xres), static_cast<int>(vinfo.yres), static_cast<int>(vinfo.bits_per_pixel));
   return 1;
@@ -2419,6 +2035,67 @@ void renderToEips(char lines[][96], int count) {
   }
 }
 
+void setFrontlightLevel(int level) {
+  char command[80];
+  snprintf(command, sizeof(command), "lipc-set-prop com.lab126.powerd flIntensity %d >/dev/null 2>&1 || true", level);
+  system(command);
+}
+
+// Reads the device's current frontlight level before we touch it, so turning
+// the light back on after a touch restores whatever brightness the user had
+// set (via the Kindle's own settings) instead of a hardcoded guess. Returns
+// kFrontlightFallbackLevel if lipc is unavailable (e.g. running off-device)
+// or the value is unparsable.
+//
+// A genuine 0 is a real answer, not a failure: a user who keeps the frontlight
+// off must not have it switched on at level 10 when they leave the dashboard.
+// So only an unreadable/unparsable response falls back - hence the explicit
+// digit check rather than treating atoi()'s 0 as "no value".
+int readFrontlightLevel() {
+  FILE* pipe = popen("lipc-get-prop com.lab126.powerd flIntensity 2>/dev/null", "r");
+  if (!pipe) return kFrontlightFallbackLevel;
+  char buffer[32] = {0};
+  const size_t read_bytes = fread(buffer, 1, sizeof(buffer) - 1, pipe);
+  pclose(pipe);
+  if (read_bytes == 0) return kFrontlightFallbackLevel;
+  const char* cursor = buffer;
+  while (*cursor == ' ' || *cursor == '\t' || *cursor == '\n' || *cursor == '\r') cursor++;
+  if (*cursor < '0' || *cursor > '9') return kFrontlightFallbackLevel;
+  const int value = atoi(cursor);
+  return value >= 0 ? value : kFrontlightFallbackLevel;
+}
+
+// Called once at startup: captures the current frontlight level (so it can be
+// restored later) and turns the light off, since the dashboard should start
+// dark and only light up in response to an actual touch.
+void initFrontlightPowerManagement() {
+  g_frontlight_saved_level = readFrontlightLevel();
+  setFrontlightLevel(0);
+  g_frontlight_is_on = 0;
+  fprintf(stderr, "power=frontlight startup_off saved_level=%d\n", g_frontlight_saved_level);
+}
+
+void wakeFrontlightOnTouch() {
+  if (g_frontlight_is_on) return;
+  // > 0, not >= 0: a saved level of 0 (user keeps the light off) is honoured on
+  // exit, but waking with 0 here would make touch-to-light a no-op, so light up at
+  // the fallback level instead. The restore paths still use the true saved value.
+  setFrontlightLevel(g_frontlight_saved_level > 0 ? g_frontlight_saved_level : kFrontlightFallbackLevel);
+  g_frontlight_is_on = 1;
+  fprintf(stderr, "power=frontlight on\n");
+}
+
+// Polled from the touch-watcher thread (see touchWatcherMain): turns the
+// frontlight back off after kFrontlightIdleTimeoutMs with no further touch,
+// so it never stays lit through periodic background refreshes.
+void turnOffFrontlightIfIdle(long long last_action_ms) {
+  if (!g_frontlight_is_on) return;
+  if (monotonicMs() - last_action_ms < kFrontlightIdleTimeoutMs) return;
+  setFrontlightLevel(0);
+  g_frontlight_is_on = 0;
+  fprintf(stderr, "power=frontlight off idle\n");
+}
+
 void showTouchVisualFeedback(TouchAction action, int x, int y) {
   if (action == kTouchNone) return;
   fprintf(stderr, "visual-feedback=tap action=%d x=%d y=%d\n", static_cast<int>(action), x, y);
@@ -2427,6 +2104,9 @@ void showTouchVisualFeedback(TouchAction action, int x, int y) {
 
 void returnToKindleHome() {
   fprintf(stderr, "exit=return-home\n");
+  // Restore whatever frontlight level we captured at startup, so leaving the
+  // dashboard doesn't strand the Kindle home screen dark.
+  if (g_frontlight_saved_level >= 0) setFrontlightLevel(g_frontlight_saved_level);
   system(
     "lipc-set-prop com.lab126.powerd preventScreenSaver 0 >/dev/null 2>&1 || true; "
     "lipc-set-prop com.lab126.appmgrd start app://com.lab126.booklet.home >/dev/null 2>&1 || "
@@ -2631,13 +2311,7 @@ int patchCachedItemDone(const char* cache, const char* item_id, int done) {
 
 void buildDashboardUrl(const char* base_url, char* out, size_t out_size) {
   if (!out || out_size == 0) return;
-  if (!base_url) base_url = "";
-  if (g_day_offset == 0) {
-    snprintf(out, out_size, "%s", base_url);
-    return;
-  }
-  const char separator = strchr(base_url, '?') ? '&' : '?';
-  snprintf(out, out_size, "%s%coffset=%d", base_url, separator, g_day_offset);
+  snprintf(out, out_size, "%s", base_url ? base_url : "");
 }
 
 int postToggleItemAsync(const char* toggle_url, const char* toggle_token, const char* item_id, int done) {
@@ -2691,142 +2365,25 @@ int handlePendingTouch(const Options* options) {
 
   if (action == kTouchExit) {
     fprintf(stderr, "touch=exit\n");
+    // Join the watcher first: returnToKindleHome() restores the frontlight, and an
+    // idle timeout firing in the watcher right after that would turn it straight back
+    // off. Safe from here - this runs on the main thread, never on the watcher.
+    stopTouchWatcher();
     returnToKindleHome();
     g_running = 0;
     return 1;
   }
 
-  if (action == kTouchBack) {
-    fprintf(stderr, "touch=back\n");
-    if (g_active_recipe >= 0) {
-      g_active_recipe = -1;
-      if (g_active_recipe_return_meal_planner) {
-        g_active_recipe_return_meal_planner = 0;
-        g_active_recipe_library = 0;
-        g_active_meal_planner = 1;
-      } else if (g_active_recipe_library) {
-        g_active_recipe_library = 0;
-        g_active_recipes = 1;
-      } else {
-        g_active_meal_planner = 1;
-      }
-    } else if (g_active_recipes) {
-      g_active_recipes = 0;
-      g_active_meal_planner = 1;
-    } else if (g_active_challenge) {
-      g_active_challenge = 0;
-    } else {
-      g_active_meal_planner = 0;
-      g_active_list = -1;
-    }
-    return 1;
-  }
-
-  if (action == kTouchHome) {
-    fprintf(stderr, "touch=home\n");
+  if (action == kTouchBack || action == kTouchHome) {
+    fprintf(stderr, "touch=%s\n", action == kTouchBack ? "back" : "home");
     g_active_list = -1;
-    g_active_meal_planner = 0;
-    g_active_recipes = 0;
-    g_active_recipe = -1;
-    g_active_recipe_library = 0;
-    g_active_recipe_return_meal_planner = 0;
-    g_active_challenge = 0;
     return 1;
   }
 
   if (action == kTouchOpenList) {
     fprintf(stderr, "touch=open-list index=%d\n", g_pending_list_index);
-    g_active_meal_planner = 0;
-    g_active_recipes = 0;
-    g_active_recipe = -1;
-    g_active_recipe_library = 0;
-    g_active_recipe_return_meal_planner = 0;
-    g_active_challenge = 0;
     g_active_list = g_pending_list_index;
     return 1;
-  }
-
-  if (action == kTouchOpenMealPlanner) {
-    fprintf(stderr, "touch=open-meal-planner\n");
-    g_active_list = -1;
-    g_active_recipes = 0;
-    g_active_recipe = -1;
-    g_active_recipe_library = 0;
-    g_active_recipe_return_meal_planner = 0;
-    g_active_challenge = 0;
-    g_active_meal_planner = 1;
-    return 1;
-  }
-
-  if (action == kTouchOpenRecipe) {
-    fprintf(stderr, "touch=open-recipe index=%d\n", g_pending_recipe_index);
-    g_active_list = -1;
-    g_active_challenge = 0;
-    if (g_active_recipes) {
-      g_active_meal_planner = 0;
-      g_active_recipe_library = 1;
-      g_active_recipe_return_meal_planner = 0;
-    } else {
-      g_active_meal_planner = 1;
-      g_active_recipe_library = 0;
-      g_active_recipe_return_meal_planner = 0;
-    }
-    g_active_recipe = g_pending_recipe_index;
-    return 1;
-  }
-
-  if (action == kTouchOpenMealPlanRecipe) {
-    fprintf(stderr, "touch=open-meal-plan-recipe index=%d\n", g_pending_recipe_index);
-    g_active_list = -1;
-    g_active_challenge = 0;
-    g_active_recipes = 0;
-    g_active_meal_planner = 0;
-    g_active_recipe_library = 1;
-    g_active_recipe_return_meal_planner = 1;
-    g_active_recipe = g_pending_recipe_index;
-    return 1;
-  }
-
-  if (action == kTouchOpenRecipes) {
-    fprintf(stderr, "touch=open-recipes\n");
-    g_active_list = -1;
-    g_active_meal_planner = 0;
-    g_active_recipe = -1;
-    g_active_recipe_library = 0;
-    g_active_recipe_return_meal_planner = 0;
-    g_active_challenge = 0;
-    g_active_recipes = 1;
-    return 1;
-  }
-
-  if (action == kTouchOpenChallenge) {
-    fprintf(stderr, "touch=open-challenge\n");
-    g_active_list = -1;
-    g_active_meal_planner = 0;
-    g_active_recipes = 0;
-    g_active_recipe = -1;
-    g_active_recipe_library = 0;
-    g_active_recipe_return_meal_planner = 0;
-    g_active_challenge = 1;
-    return 1;
-  }
-
-  if (action == kTouchPreviousDay || action == kTouchNextDay) {
-    g_day_offset += action == kTouchPreviousDay ? -1 : 1;
-    if (g_day_offset < -365) g_day_offset = -365;
-    if (g_day_offset > 365) g_day_offset = 365;
-    fprintf(stderr, "touch=date-switch offset=%d\n", g_day_offset);
-    g_manual_fetch_refresh = 1;
-    g_event_refresh = 1;
-    return 2;
-  }
-
-  if (action == kTouchToday) {
-    g_day_offset = 0;
-    fprintf(stderr, "touch=date-switch today offset=0\n");
-    g_manual_fetch_refresh = 1;
-    g_event_refresh = 1;
-    return 2;
   }
 
   if (action == kTouchToggleItem) {
@@ -2834,6 +2391,20 @@ int handlePendingTouch(const Options* options) {
     fprintf(stderr, "touch=toggle-list-item id=%s done=%d\n", g_pending_item_id, next_done);
     patchCachedItemDone(options->cache, g_pending_item_id, next_done);
     postToggleItemAsync(options->toggle_url, options->toggle_token, g_pending_item_id, next_done);
+    return 1;
+  }
+
+  if (action == kTouchToggleLock) {
+    // Always a lock, never a toggle: this action cannot fire while already locked (see
+    // the enum comment), so there is nothing to toggle away from.
+    g_screen_locked = 1;
+    fprintf(stderr, "touch=lock-screen\n");
+    return 1;
+  }
+
+  if (action == kTouchHardwareUnlock) {
+    g_screen_locked = 0;
+    fprintf(stderr, "touch=hardware-unlock\n");
     return 1;
   }
 
@@ -2845,35 +2416,61 @@ struct TouchWatcherArgs {
   TouchInput* touch;
 };
 
+// Kept joinable (not detached) so shutdown can wait for it. The watcher calls
+// turnOffFrontlightIfIdle(), so if it were still running while main restores the
+// frontlight, a timeout firing in that window would push setFrontlightLevel(0)
+// *after* the restore and leave the device dark - the exact failure the restore
+// exists to prevent. The loop only ever blocks on a 250ms usleep (the touch fds are
+// non-blocking), so the join returns promptly.
+pthread_t g_touch_watcher_thread;
+volatile sig_atomic_t g_touch_watcher_running = 0;
+
 void* touchWatcherMain(void* raw) {
   TouchWatcherArgs* args = static_cast<TouchWatcherArgs*>(raw);
   TouchInput* touch = args ? args->touch : NULL;
   free(args);
   if (!touch) return NULL;
 
-  while (g_running) {
+  // Checks its own flag too, not just g_running: the on-screen EXIT path leaves
+  // g_running set and still needs the watcher stopped before the frontlight restore.
+  while (g_running && g_touch_watcher_running) {
     pollExitTouch(touch);
+    pollPowerButtonUnlock(touch);
+    turnOffFrontlightIfIdle(touch->last_action_ms);
     usleep(250000);
   }
   return NULL;
 }
 
 void startTouchWatcher(TouchInput* touch) {
-  if (!touch || touch->count <= 0) return;
+  // Started for the power button alone too, not just touch devices: a Kindle with no
+  // detected touchscreen (unexpected, but initTouchInput() logs it either way) should still
+  // be able to unlock, if it ever somehow got locked to begin with.
+  if (!touch || (touch->count <= 0 && touch->power_fd < 0)) return;
   TouchWatcherArgs* args = static_cast<TouchWatcherArgs*>(calloc(1, sizeof(TouchWatcherArgs)));
   if (!args) return;
   args->touch = touch;
-  pthread_t thread;
-  if (pthread_create(&thread, NULL, touchWatcherMain, args) != 0) {
+  g_touch_watcher_running = 1;
+  if (pthread_create(&g_touch_watcher_thread, NULL, touchWatcherMain, args) != 0) {
     fprintf(stderr, "input=thread_failed\n");
+    g_touch_watcher_running = 0;
     free(args);
     return;
   }
-  pthread_detach(thread);
   fprintf(stderr, "input=thread_started\n");
+}
+
+// Must be called before closeTouchInput() (the watcher reads those fds) and before
+// the frontlight is restored.
+void stopTouchWatcher() {
+  if (!g_touch_watcher_running) return;
+  g_touch_watcher_running = 0;
+  pthread_join(g_touch_watcher_thread, NULL);
+  fprintf(stderr, "input=thread_stopped\n");
 }
 #else
 void startTouchWatcher(TouchInput*) {}
+void stopTouchWatcher() {}
 #endif
 
 struct EventWatcherArgs {
@@ -3110,7 +2707,6 @@ int waitForWakeEvent(const Options* options, int seconds, int allow_repaint) {
     if (g_pending_action != kTouchNone) {
       const int touch_result = handlePendingTouch(options);
       if (!g_running) return 0;
-      if (touch_result == 2) return 1;
       if (touch_result == 1) renderCachedPayload(options, "cached/local");
       continue;
     }
@@ -3134,25 +2730,8 @@ void handleSignal(int) {
 void applyInitialView(const char* view) {
   if (!view || !view[0]) return;
   g_active_list = -1;
-  g_active_meal_planner = 0;
-  g_active_recipes = 0;
-  g_active_recipe = -1;
-  g_active_recipe_library = 0;
-  g_active_challenge = 0;
-  if (strcmp(view, "challenge") == 0) g_active_challenge = 1;
-  else if (strcmp(view, "recipe") == 0) {
-    g_active_recipes = 1;
-    g_active_recipe = 0;
-    g_active_recipe_library = 1;
-  } else if (strcmp(view, "meal-recipe") == 0) {
-    g_active_meal_planner = 1;
-    g_active_recipe = 0;
-    g_active_recipe_library = 0;
-  } else if (strcmp(view, "chores") == 0) {
-    g_active_list = 0;
-  } else if (strcmp(view, "grocery") == 0) {
-    g_active_list = 1;
-  }
+  if (strcmp(view, "chores") == 0) g_active_list = 0;
+  else if (strcmp(view, "grocery") == 0) g_active_list = 1;
 }
 
 void initOptions(Options* options) {
@@ -3160,18 +2739,20 @@ void initOptions(Options* options) {
   copyText(options->events_url, sizeof(options->events_url), kDefaultEventsUrl);
   copyText(options->toggle_url, sizeof(options->toggle_url), kDefaultToggleUrl);
   options->read_token[0] = '\0';
+  options->title[0] = '\0';
   options->toggle_token[0] = '\0';
   copyText(options->cache, sizeof(options->cache), kDefaultCache);
   options->render_only[0] = '\0';
   options->view[0] = '\0';
   options->dump_pgm[0] = '\0';
   options->save_pgm[0] = '\0';
+  copyText(options->photo_path, sizeof(options->photo_path), kDefaultPhotoPath);
   options->dump_width = kBitmapFallbackWidth;
   options->dump_height = kBitmapFallbackHeight;
   options->interval = kDefaultIntervalSeconds;
   parseSleepWindow(kDefaultSleepWindow, &options->sleep_start_minute, &options->sleep_end_minute);
   options->once = 0;
-  options->invert_images = 0;
+  options->dark = 0;
 }
 
 int parseOptions(int argc, char** argv, Options* options) {
@@ -3192,10 +2773,12 @@ int parseOptions(int argc, char** argv, Options* options) {
         return 0;
       }
     } else if (strcmp(argv[i], "--once") == 0) options->once = 1;
-    else if (strcmp(argv[i], "--invert-images") == 0) {
-      options->invert_images = 1;
-      g_invert_images = 1;
-    }
+    else if (strcmp(argv[i], "--dark") == 0) options->dark = 1;
+    // The old name for the same thing, still passed by any config.sh written before --dark
+    // existed. It used to counter-invert bitmaps under the Kindle's OS-level dark mode and then
+    // did nothing at all once the cover images were dropped, so "Start (dark)" rendered exactly
+    // like light. It now means what the menu entry always claimed it meant.
+    else if (strcmp(argv[i], "--invert-images") == 0) options->dark = 1;
     else if (strcmp(argv[i], "--render") == 0 && i + 1 < argc) copyText(options->render_only, sizeof(options->render_only), argv[++i]);
     else if (strcmp(argv[i], "--view") == 0 && i + 1 < argc) copyText(options->view, sizeof(options->view), argv[++i]);
     else if (strcmp(argv[i], "--dump-pgm") == 0 && i + 1 < argc) copyText(options->dump_pgm, sizeof(options->dump_pgm), argv[++i]);
@@ -3207,9 +2790,11 @@ int parseOptions(int argc, char** argv, Options* options) {
       }
     }
     else if (strcmp(argv[i], "--save-pgm") == 0 && i + 1 < argc) copyText(options->save_pgm, sizeof(options->save_pgm), argv[++i]);
+    else if (strcmp(argv[i], "--photo") == 0 && i + 1 < argc) copyText(options->photo_path, sizeof(options->photo_path), argv[++i]);
+    else if (strcmp(argv[i], "--title") == 0 && i + 1 < argc) copyText(options->title, sizeof(options->title), argv[++i]);
     else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
-      printf("Usage: %s [--url URL] [--events-url URL] [--toggle-url URL] [--read-token TOKEN] [--toggle-token TOKEN] [--cache PATH] [--interval SECONDS] [--sleep-window HH:MM-HH:MM|off] [--once] [--invert-images]\n", argv[0]);
-      printf("       %s --render PATH [--view challenge|recipe|meal-recipe|chores|grocery] [--dump-pgm PATH] [--dump-size WIDTHxHEIGHT] [--save-pgm PATH]\n", argv[0]);
+      printf("Usage: %s [--url URL] [--events-url URL] [--toggle-url URL] [--read-token TOKEN] [--toggle-token TOKEN] [--cache PATH] [--interval SECONDS] [--sleep-window HH:MM-HH:MM|off] [--photo PGM_PATH] [--title TEXT] [--once] [--dark]\n", argv[0]);
+      printf("       %s --render PATH [--view chores|grocery] [--title TEXT] [--dark] [--dump-pgm PATH] [--dump-size WIDTHxHEIGHT] [--save-pgm PATH]\n", argv[0]);
       exit(0);
     } else {
       fprintf(stderr, "Unknown or incomplete argument: %s\n", argv[i]);
@@ -3222,8 +2807,17 @@ int parseOptions(int argc, char** argv, Options* options) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  // stderr is redirected to a log file by the KUAL wrapper scripts. It is already unbuffered by
+  // default, but state it explicitly: this is a long-running background process whose log is the
+  // only way to diagnose it, so no diagnostic may be left sitting in a buffer if it is killed or
+  // crashes.
+  setvbuf(stderr, NULL, _IONBF, 0);
   Options options;
   if (!parseOptions(argc, argv, &options)) return 1;
+  copyText(g_photo_path, sizeof(g_photo_path), options.photo_path);
+  if (options.title[0]) upperCopy(g_title, sizeof(g_title), options.title);
+  g_dark_mode = options.dark;
+  if (g_dark_mode) fprintf(stderr, "options=dark-mode enabled\n");
 
   if (options.render_only[0]) {
     applyInitialView(options.view);
@@ -3245,6 +2839,10 @@ int main(int argc, char** argv) {
   initTouchInput(&touch);
   startTouchWatcher(&touch);
   if (!options.once && !options.render_only[0]) {
+    // Only for the long-running "Start Dashboard" mode: a one-off "Refresh
+    // Once" run exits right after rendering, so turning the light off here
+    // would just leave the screen dark with no touch loop left to relight it.
+    initFrontlightPowerManagement();
     startEventWatcher(options.events_url, options.read_token, options.sleep_start_minute, options.sleep_end_minute);
   }
 
@@ -3317,7 +2915,14 @@ int main(int argc, char** argv) {
     }
   }
 
+  // Order matters: join the watcher before closing the fds it reads, and before the
+  // frontlight restore below, so it cannot turn the light back off afterwards.
+  stopTouchWatcher();
   closeTouchInput(&touch);
-  freePgmCache();
+  // Covers the "Stop Dashboard" KUAL menu path (SIGTERM -> g_running=0 here),
+  // as opposed to the on-screen EXIT button which already restores it via
+  // returnToKindleHome(). Without this, stopping via the menu could strand
+  // the frontlight off if it happened to be in its idle-timeout state.
+  if (g_frontlight_saved_level >= 0) setFrontlightLevel(g_frontlight_saved_level);
   return 0;
 }

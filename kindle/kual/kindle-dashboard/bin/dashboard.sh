@@ -12,13 +12,18 @@ CACHE="${CACHE:-/mnt/us/documents/kindle-dashboard-data.json}"
 LOG="${LOG:-/mnt/us/documents/kindle-dashboard-native.log}"
 PIDFILE="${PIDFILE:-/mnt/us/documents/kindle-dashboard-native.pid}"
 SAVE_PGM="${SAVE_PGM:-/mnt/us/documents/kindle-dashboard-last-render.pgm}"
-INTERVAL="${INTERVAL:-3600}"
+INTERVAL="${INTERVAL:-300}"
 DASHBOARD_KEEP_AWAKE="${DASHBOARD_KEEP_AWAKE:-1}"
 DASHBOARD_SLEEP_WINDOW="${DASHBOARD_SLEEP_WINDOW:-off}"
+DASHBOARD_TITLE="${DASHBOARD_TITLE:-Kindle Dashboard}"
 DASHBOARD_TIMEZONE="${DASHBOARD_TIMEZONE:-}"
 [ -n "$DASHBOARD_TIMEZONE" ] && export TZ="$DASHBOARD_TIMEZONE"
-INVERT_IMAGES="${INVERT_IMAGES:-0}"
-[ -n "$DASHBOARD_FORCE_INVERT_IMAGES" ] && INVERT_IMAGES="$DASHBOARD_FORCE_INVERT_IMAGES"
+# Dark mode. DARK_MODE is the current name; INVERT_IMAGES is what config.sh
+# files written before it call the same setting, and it still works, so an
+# upgrade keeps whatever the device was already set to.
+DARK_MODE="${DARK_MODE:-${INVERT_IMAGES:-0}}"
+[ -n "$DASHBOARD_FORCE_DARK_MODE" ] && DARK_MODE="$DASHBOARD_FORCE_DARK_MODE"
+[ -n "$DASHBOARD_FORCE_INVERT_IMAGES" ] && DARK_MODE="$DASHBOARD_FORCE_INVERT_IMAGES"
 SCRIPT_DIR="$(dirname "$0")"
 NATIVE_APP="${NATIVE_APP:-$SCRIPT_DIR/kindle-dashboard}"
 RUN_APP="${RUN_APP:-/tmp/kindle-dashboard-native}"
@@ -26,6 +31,15 @@ SHOW_STATUS="${DASHBOARD_SHOW_STATUS:-0}"
 
 say() {
   [ "$SHOW_STATUS" = "1" ] && eips 2 2 "$1" >/dev/null 2>&1 || true
+}
+
+# Sets $theme_args, used by both the always-on start path and the one-shot
+# refresh path below - a single spot so a future flag rename only needs one
+# edit in this file (see the sibling copy in kindle/launch-dashboard.sh for
+# why it isn't shared across both).
+dark_mode_theme_args() {
+  theme_args=""
+  [ "$DARK_MODE" = "1" ] && theme_args="--dark"
 }
 
 log() {
@@ -93,8 +107,7 @@ start_dashboard() {
   fi
   enable_wifi
   log "starting native dashboard interval=$INTERVAL keep_awake=$DASHBOARD_KEEP_AWAKE sleep_window=$DASHBOARD_SLEEP_WINDOW timezone=${TZ:-kindle-local}"
-  image_args=""
-  [ "$INVERT_IMAGES" = "1" ] && image_args="--invert-images"
+  dark_mode_theme_args
   save_args=""
   [ -n "$SAVE_PGM" ] && save_args="--save-pgm $SAVE_PGM"
   nohup "$RUN_APP" \
@@ -106,7 +119,8 @@ start_dashboard() {
     --cache "$CACHE" \
     --interval "$INTERVAL" \
     --sleep-window "$DASHBOARD_SLEEP_WINDOW" \
-    $image_args \
+    --title "$DASHBOARD_TITLE" \
+    $theme_args \
     $save_args >> "$LOG" 2>&1 &
   echo "$!" > "$PIDFILE"
 }
@@ -140,10 +154,9 @@ case "$1" in
     fi
     cp "$NATIVE_APP" "$RUN_APP" >> "$LOG" 2>&1
     chmod 755 "$RUN_APP" >> "$LOG" 2>&1
-    image_args=""
-    [ "$INVERT_IMAGES" = "1" ] && image_args="--invert-images"
+    dark_mode_theme_args
     once_save_pgm="${SAVE_PGM:-/mnt/us/documents/kindle-dashboard-last-render.pgm}"
-    "$RUN_APP" --url "$DASHBOARD_DATA_URL" --events-url "$DASHBOARD_EVENTS_URL" --toggle-url "$DASHBOARD_TOGGLE_URL" --read-token "$DASHBOARD_READ_TOKEN" --toggle-token "$DASHBOARD_TOGGLE_TOKEN" --cache "$CACHE" --sleep-window "$DASHBOARD_SLEEP_WINDOW" --once $image_args --save-pgm "$once_save_pgm" >> "$LOG" 2>&1
+    "$RUN_APP" --url "$DASHBOARD_DATA_URL" --events-url "$DASHBOARD_EVENTS_URL" --toggle-url "$DASHBOARD_TOGGLE_URL" --read-token "$DASHBOARD_READ_TOKEN" --toggle-token "$DASHBOARD_TOGGLE_TOKEN" --cache "$CACHE" --sleep-window "$DASHBOARD_SLEEP_WINDOW" --title "$DASHBOARD_TITLE" --once $theme_args --save-pgm "$once_save_pgm" >> "$LOG" 2>&1
     allow_sleep
     ;;
   stop)

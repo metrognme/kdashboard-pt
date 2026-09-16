@@ -2,9 +2,7 @@
 node_modules/
 
 # Build output
-dist/
 build/
-.vite/
 
 # Local environment and backend credentials
 .env
@@ -12,41 +10,13 @@ build/
 !.env.example
 .insforge/
 
-# Local iOS config with Health Sync secrets
-ios/HealthSyncCompanion/Config/LocalConfig.xcconfig
-
-# Kindle/user-local config and runtime files
+# Kindle owner config and runtime files
 kindle/kual/kindle-dashboard/config.sh
+# Owner-supplied photo-tile bitmap; personal, not part of the kit
+kindle/kual/kindle-dashboard/assets/
+*.pgm
 *.log
 *.pid
-
-# Local rescue, device, and generated scan artifacts
-device-rescue/
-codex-security-scans*/
-scan-manifest.json
-coverage.json
-findings.json
-report.md
-results.sarif
-
-# Python/CAD local caches and generated viewer artifacts
-.venv/
-.venv-cad/
-__pycache__/
-*.py[cod]
-cad/__pycache__/
-cad/.*.glb
-cad/reference/
-cad/meshes/
-cad/snapshots/
-cad/*-job.json
-kindle/native/renders/
-
-# Xcode local state
-DerivedData/
-*.xcworkspace/
-xcuserdata/
-*.xcuserstate
 
 # OS/editor noise
 .DS_Store
@@ -55,13 +25,12 @@ Thumbs.db
 *.swp
 *.swo
 
-# AI agent local state
+# AI agent local state (CLAUDE.md and AGENTS.md are tracked on purpose)
 .agent/
 .agents/
 .augment/
 .claude/
 .cline/
-.github/copilot*
 .kilocode/
 .qoder/
 .qwen/

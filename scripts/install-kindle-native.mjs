@@ -9,6 +9,7 @@ const eventsUrl = process.env.DASHBOARD_EVENTS_URL || "";
 const toggleUrl = process.env.DASHBOARD_TOGGLE_URL || "";
 const readToken = process.env.DASHBOARD_READ_TOKEN || "";
 const toggleToken = process.env.DASHBOARD_TOGGLE_TOKEN || "";
+const title = process.env.DASHBOARD_TITLE || "Kindle Dashboard";
 const archive = path.resolve("kindle/native/build/kindle-dashboard-kual.tar.gz");
 const volume = path.resolve(volumeArg || "/Volumes/Kindle");
 const extensionsDir = path.join(volume, "extensions");
@@ -16,8 +17,6 @@ const documentsDir = path.join(volume, "documents");
 const targetDir = path.join(extensionsDir, "kindle-dashboard");
 const targetConfig = path.join(targetDir, "config.sh");
 const launchScript = path.join(documentsDir, "kindle-dashboard-launch.sh");
-const launchLightScript = path.join(documentsDir, "kindle-dashboard-launch-light.sh");
-const launchDarkScript = path.join(documentsDir, "kindle-dashboard-launch-dark.sh");
 const cacheFile = path.join(documentsDir, "kindle-dashboard-data.json");
 const existingConfig = existsSync(targetConfig) ? readFileSync(targetConfig, "utf8") : "";
 
@@ -49,13 +48,16 @@ execFileSync("tar", ["-C", extensionsDir, "-xzf", archive], {
 execFileSync("find", [targetDir, "-name", "._*", "-delete"], { stdio: "inherit" });
 copyFileSync(path.resolve("kindle/launch-dashboard.sh"), launchScript);
 execFileSync("chmod", ["+x", launchScript], { stdio: "inherit" });
-const launchTemplate = readFileSync(path.resolve("kindle/launch-dashboard.sh"), "utf8");
-writeFileSync(launchLightScript, forceShortcutMode(launchTemplate, "0"));
-writeFileSync(launchDarkScript, forceShortcutMode(launchTemplate, "1"));
-execFileSync("chmod", ["+x", launchLightScript, launchDarkScript], { stdio: "inherit" });
 rmSync(path.join(documentsDir, "._kindle-dashboard-launch.sh"), { force: true });
-rmSync(path.join(documentsDir, "._kindle-dashboard-launch-light.sh"), { force: true });
-rmSync(path.join(documentsDir, "._kindle-dashboard-launch-dark.sh"), { force: true });
+// Forced-light/forced-dark copies of the upstart launcher used to be written here too
+// (kindle-dashboard-launch-light.sh / -dark.sh), but nothing ever pointed at them: upstart
+// always execs the plain launcher above, and the KUAL menu's own Light/Dark entries run
+// extensions/kindle-dashboard/bin/start-light.sh / start-dark.sh instead, a different pair of
+// files entirely. They were dead weight on the device from the first install. Clean one up
+// with:
+//   rm -f /mnt/us/documents/kindle-dashboard-launch-light.sh /mnt/us/documents/kindle-dashboard-launch-dark.sh
+// DARK_MODE in config.sh already controls the plain launcher's theme, so there is nothing to
+// replace them with.
 
 if (existingConfig) {
   writeFileSync(targetConfig, existingConfig);
@@ -69,11 +71,12 @@ if (existingConfig) {
       `DASHBOARD_TOGGLE_URL="${shellDoubleQuote(toggleUrl)}"`,
       `DASHBOARD_READ_TOKEN="${shellDoubleQuote(readToken)}"`,
       `DASHBOARD_TOGGLE_TOKEN="${shellDoubleQuote(toggleToken)}"`,
+      `DASHBOARD_TITLE="${shellDoubleQuote(title)}"`,
       "",
-      'INTERVAL="3600"',
+      'INTERVAL="300"',
       'DASHBOARD_KEEP_AWAKE="1"',
       'DASHBOARD_SLEEP_WINDOW="off"',
-      'INVERT_IMAGES="0"',
+      'DARK_MODE="0"',
       ""
     ].join("\n")
   );
@@ -110,8 +113,7 @@ writeFileSync(
     "",
     "Manual/upstart launcher:",
     "  /mnt/us/documents/kindle-dashboard-launch.sh",
-    "  /mnt/us/documents/kindle-dashboard-launch-light.sh",
-    "  /mnt/us/documents/kindle-dashboard-launch-dark.sh",
+    "  (theme follows DARK_MODE in config.sh; the KUAL menu below overrides it per launch)",
     "",
     "KUAL menu:",
     "  Kindle Dashboard -> Start Dashboard (Light)",
@@ -145,11 +147,6 @@ console.log(`Installed Kindle Dashboard extension to ${targetDir}`);
 function isLikelyKindleVolume(volumePath) {
   const name = path.basename(volumePath).toLowerCase();
   return name.includes("kindle") || existsSync(path.join(volumePath, "documents"));
-}
-
-function forceShortcutMode(script, value) {
-  const marker = 'INVERT_IMAGES="${INVERT_IMAGES:-0}"';
-  return script.replace(marker, `INVERT_IMAGES="${value}"`);
 }
 
 function shellDoubleQuote(value) {

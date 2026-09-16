@@ -13,7 +13,9 @@ or local `.env` files that are ignored by Git.
 - Node.js 20+ and npm.
 - An InsForge account.
 - A Telegram bot token from BotFather.
-- A jailbroken Kindle with KUAL installed.
+- Optional: a CalDAV calendar for the Agenda module.
+- A jailbroken Kindle with KUAL installed (see step 0 of
+  [INSTALL_FOR_USERS.md](INSTALL_FOR_USERS.md)).
 - Optional: Zig or an ARM Kindle cross compiler for building the native package.
 
 ## Assistant Prompt: Start The Setup
@@ -22,15 +24,16 @@ Paste this into your coding assistant from the repo root:
 
 ```text
 I want to set up this Kindle Dashboard as a bring-your-own-backend kit for my
-own Kindle. Please follow docs/INSTALL_FOR_USERS.md and use AGENTS.md.
+own Kindle. Please follow docs/INSTALL_FOR_USERS.md, docs/CONFIGURATION.md and AGENTS.md
+(or CLAUDE.md).
 
 Important:
 - Do not hardcode or commit secrets.
 - Use npx @insforge/cli for InsForge commands.
 - Create or link an InsForge project only after confirming with me.
 - Apply the public kit backend setup with npm run kit:backend.
-- Help me configure Telegram, generate Kindle config.sh, and verify the deployed
-  dashboard endpoints.
+- Help me configure Telegram, weather location, CalDAV, generate Kindle
+  config.sh, and verify the deployed dashboard endpoints.
 - Do not use the developer instance URLs except as examples.
 ```
 
@@ -62,10 +65,19 @@ a time, and never print the full secret back to me after it is entered.
 Required:
 - INSFORGE_BASE_URL
 - INSFORGE_API_KEY
+- DASHBOARD_TIMEZONE (an IANA name, e.g. America/Sao_Paulo)
+- WEATHER_LAT
+- WEATHER_LON
 
 Optional:
-- OPENAI_API_KEY
-- OPENAI_MODEL
+- CALDAV_BASE_URL, CALDAV_CALENDAR_PATH, CALDAV_USERNAME, CALDAV_PASSWORD
+  (all four, or none)
+- LLM_API_KEY
+- LLM_BASE_URL (defaults to https://generativelanguage.googleapis.com/v1beta/openai)
+- LLM_MODEL (defaults to gemini-3.5-flash-lite — a quota choice: the full
+  flash models allow only ~20 free requests per day)
+- LLM_REASONING_EFFORT (defaults to low — without it Gemini 3.x spends
+  9-13s thinking about a one-second classification)
 ```
 
 The assistant may run commands like:
@@ -73,6 +85,11 @@ The assistant may run commands like:
 ```sh
 npx @insforge/cli secrets add INSFORGE_BASE_URL https://your-project.insforge.app
 npx @insforge/cli secrets add INSFORGE_API_KEY your-server-only-api-key
+npx @insforge/cli secrets add DASHBOARD_TIMEZONE America/Sao_Paulo
+npx @insforge/cli secrets add WEATHER_LAT -23.5505
+npx @insforge/cli secrets add WEATHER_LON -46.6333
+npx @insforge/cli secrets add CALDAV_BASE_URL https://your-caldav-host
+npx @insforge/cli secrets add CALDAV_CALENDAR_PATH /calendars/user/personal/
 ```
 
 ## Assistant Prompt: Telegram
@@ -84,7 +101,8 @@ Help me connect Telegram. I will provide my bot token. First run
 npm run telegram:chat-id to find my chat ID. Then run
 npm run telegram:configure with my bot token, chat ID, and my project's
 telegram-webhook URL. Do not rely on default developer URLs, and do not commit
-or echo the bot token in docs.
+or echo the bot token in docs. Then run npm run digest:schedule with my
+project URL to enable the daily summary.
 ```
 
 The webhook URL should look like:
@@ -98,8 +116,8 @@ formats in `docs/INSTALL_FOR_USERS.md`:
 
 ```text
 Show me the supported Telegram message examples from docs/INSTALL_FOR_USERS.md
-and help me test one planner command, one challenge check-in, and one meal-plan
-command without exposing tokens.
+and help me test one grocery/todo command and one agenda command without
+exposing tokens.
 ```
 
 ## Assistant Prompt: Kindle Config
@@ -123,10 +141,11 @@ DASHBOARD_EVENTS_URL="https://your-project.function2.insforge.app/kindle-dashboa
 DASHBOARD_TOGGLE_URL="https://your-project.insforge.app/functions/kindle-dashboard-toggle"
 DASHBOARD_READ_TOKEN="replace-with-your-generated-read-token"
 DASHBOARD_TOGGLE_TOKEN="replace-with-your-generated-toggle-token"
-INTERVAL="3600"
+DASHBOARD_TITLE="My Kindle"
+INTERVAL="300"
 DASHBOARD_KEEP_AWAKE="1"
 DASHBOARD_SLEEP_WINDOW="off"
-INVERT_IMAGES="0"
+DARK_MODE="0"
 ```
 
 ## Assistant Prompt: Build The KUAL Package
@@ -143,8 +162,9 @@ If Zig is installed:
 Build the Kindle KUAL package with make -C kindle/native extension-zig. If Zig
 is not on PATH, ask me for the Zig path. After the build, tell me where
 kindle-dashboard-kual.tar.gz was written and remind me to keep config.sh local.
-If installing to a mounted Kindle, set DASHBOARD_DATA_URL and
-DASHBOARD_READ_TOKEN explicitly before running npm run native:install.
+If installing to a mounted Kindle, find its mount path first (ask me if
+unsure), set the DASHBOARD_* variables explicitly, and run
+npm run native:install -- <mount path>.
 ```
 
 If an ARM Kindle compiler is installed:
@@ -154,29 +174,17 @@ Build the Kindle KUAL package with make -C kindle/native extension. If the
 cross compiler is missing, ask me for KINDLE_CXX or suggest the Zig build path.
 ```
 
-## Assistant Prompt: Health Sync Companion
-
-Use this if you want Apple Health summaries synced from iPhone:
-
-```text
-Help me set up the optional iOS Health Sync companion. Follow
-docs/INSTALL_FOR_USERS.md. Confirm the health migration/function/secret are
-present without printing secret values, create
-ios/HealthSyncCompanion/Config/LocalConfig.xcconfig from the example if needed,
-and help me set INSFORGE_HEALTH_SYNC_URL plus HEALTH_SYNC_TOKEN locally. Do not
-commit LocalConfig.xcconfig.
-```
-
 ## Assistant Prompt: Verify
 
 Use this after deployment and Kindle install:
 
 ```text
 Verify my setup without exposing secrets. Check that npm run check passes.
-Check the data endpoint with curl and confirm it returns ok:true JSON. If my
-Kindle is mounted, inspect /Volumes/Kindle/extensions/kindle-dashboard/config.sh
-for required keys without printing secret values, and inspect the dashboard logs
-under /Volumes/Kindle/documents. Do not modify unrelated Kindle files.
+Check the data endpoint with curl and confirm it returns ok:true JSON with
+weather.available and agenda.available both true. If my Kindle is mounted
+(ask me for the mount path), inspect extensions/kindle-dashboard/config.sh on
+it for required keys without printing secret values, and inspect the
+dashboard logs under documents/ on it. Do not modify unrelated Kindle files.
 ```
 
 Useful checks:
@@ -194,6 +202,7 @@ Do these yourself or explicitly supervise them:
 - Creating the Telegram bot in BotFather.
 - Entering InsForge admin API keys.
 - Entering Telegram bot tokens.
+- Entering your CalDAV password/app-token.
 - Copying files onto a Kindle if you are not comfortable with the assistant
   writing to mounted devices.
 - Enabling optional boot autostart on Kindle.
@@ -209,6 +218,16 @@ endpoint, then the KUAL config.sh URLs, then Kindle logs. Treat the normal
 function2.insforge.app URL.
 ```
 
+If Weather or Agenda shows unavailable on the dashboard, ask:
+
+```text
+Please debug why weather.available or agenda.available is false in the
+kindle-dashboard-data response. Check WEATHER_LAT/WEATHER_LON, and check
+CALDAV_BASE_URL/CALDAV_CALENDAR_PATH/CALDAV_USERNAME/CALDAV_PASSWORD are set
+and that the CalDAV server is reachable from InsForge. Do not print the
+CalDAV password.
+```
+
 If Telegram commands do nothing, ask:
 
 ```text
@@ -222,5 +241,5 @@ If the KUAL menu opens but nothing renders, ask:
 ```text
 Please inspect the Kindle-side install. Check that the native binary exists,
 the shell scripts are executable, config.sh exists, and logs under
-/mnt/us/documents or /Volumes/Kindle/documents show the failing command.
+/mnt/us/documents (documents/ on the mounted drive) show the failing command.
 ```

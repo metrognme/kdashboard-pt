@@ -1,6 +1,8 @@
 import { createAdminClient } from "npm:@insforge/sdk";
 
-type ListKey = "grocery" | "todo";
+// Must stay in sync with kindle-dashboard-data.ts: any list the dashboard renders
+// has to be part of the version hash below, or writes to it never push an update.
+type ListKey = "grocery" | "todo" | "notes";
 
 type PlannerItem = {
   id: string;
@@ -11,50 +13,8 @@ type PlannerItem = {
   updated_at: string;
 };
 
-type HealthSummary = {
-  date: string;
-  steps: number;
-  dietary_energy_kcal: string | number;
-  synced_at: string;
-  updated_at: string;
-};
-
-type HealthTarget = {
-  metric: "steps" | "calories";
-  label: string;
-  target_value: string | number;
-  unit: string;
-  updated_at: string;
-};
-
-type ChallengeLog = {
-  date: string;
-  water_l: string | number;
-  sleep_hours: string | number;
-  workouts: number;
-  updated_at: string;
-};
-
-type MealPlanEntry = {
-  date: string;
-  recipe_id: string;
-  sort_order: number;
-  updated_at: string;
-};
-
-type RecipeVersion = {
-  id: string;
-  rating: string | number;
-  updated_at: string;
-};
-
 type DashboardData = {
   items: PlannerItem[];
-  health: HealthSummary | null;
-  targets: HealthTarget[];
-  challenge: ChallengeLog | null;
-  mealPlan: MealPlanEntry[];
-  recipes: RecipeVersion[];
 };
 
 export default function(req: Request): Response {
@@ -84,13 +44,13 @@ export default function(req: Request): Response {
 
   const stream = new ReadableStream({
     start(controller) {
-      async function pushIfChanged(force = false) {
+      async function pushIfChanged() {
         if (closed) return;
         try {
           const data = await loadDashboardData();
           if (closed) return;
           const version = getDashboardVersion(data);
-          if (!force && version === lastVersion) {
+          if (version === lastVersion) {
             controller.enqueue(encoder.encode(`: heartbeat ${new Date().toISOString()}\n\n`));
             return;
           }
@@ -104,8 +64,29 @@ export default function(req: Request): Response {
         }
       }
 
+      // The client is forced to reconnect roughly every 55s (this function's own
+      // timeout below), and each connection starts with no memory of the last
+      // one - lastVersion resets to "" every time. Emitting a forced "planner"
+      // event here used to treat that reset as "something changed" on every
+      // single reconnect, which made the Kindle refetch and fully repaint the
+      // e-ink screen roughly once a minute all day, rather than only when a
+      // list actually changed. Priming lastVersion silently, and only ever
+      // emitting "planner" from the genuine-change check below, means a
+      // reconnect that finds nothing new stays quiet.
+      async function primeBaseline() {
+        if (closed) return;
+        try {
+          const data = await loadDashboardData();
+          if (closed) return;
+          lastVersion = getDashboardVersion(data);
+        } catch (error) {
+          controller.enqueue(encoder.encode(`event: planner-error\n`));
+          controller.enqueue(encoder.encode(`data: ${errorMessage(error)}\n\n`));
+        }
+      }
+
       controller.enqueue(encoder.encode(`: connected ${new Date().toISOString()}\n\n`));
-      void pushIfChanged(true);
+      void primeBaseline();
       intervalId = setInterval(() => void pushIfChanged(), 2000);
       timeoutId = setTimeout(() => {
         closed = true;
@@ -137,117 +118,23 @@ async function loadDashboardData(): Promise<DashboardData> {
     baseUrl: requiredEnv("INSFORGE_BASE_URL"),
     apiKey: requiredEnv("INSFORGE_API_KEY")
   });
-  const today = dashboardLocalDate();
 
-  const baseStarted = timeMs();
-  const [
-    itemsResult,
-    healthResult,
-    challengeResult,
-    targetsResult,
-    mealPlanResult,
-    recipesResult
-  ] = await Promise.all([
-    admin.database
-      .from("planner_items")
-      .select("id,list_key,text,done,created_at,updated_at")
-      .in("list_key", ["todo", "grocery"])
-      .order("created_at", { ascending: false }),
-    admin.database
-      .from("health_daily_summaries")
-      .select("date,steps,dietary_energy_kcal,synced_at,updated_at")
-      .eq("source", "apple_health_ios")
-      .eq("date", today)
-      .limit(1),
-    admin.database
-      .from("challenge_daily_logs")
-      .select("date,water_l,sleep_hours,workouts,updated_at")
-      .eq("date", today)
-      .limit(1),
-    admin.database
-      .from("health_targets")
-      .select("metric,label,target_value,unit,updated_at")
-      .order("metric", { ascending: true }),
-    admin.database
-      .from("meal_plan_entries")
-      .select("date,recipe_id,sort_order,updated_at")
-      .eq("date", today)
-      .order("sort_order", { ascending: true }),
-    admin.database
-      .from("recipes")
-      .select("id,rating,updated_at")
-      .order("id", { ascending: true })
-  ]);
-  const baseQueryMs = elapsedMs(baseStarted);
-
-  const { data: items, error: itemsError } = itemsResult;
+  const { data: items, error: itemsError } = await admin.database
+    .from("planner_items")
+    .select("id,list_key,text,done,created_at,updated_at")
+    .in("list_key", ["todo", "grocery", "notes"])
+    .order("created_at", { ascending: false });
   if (itemsError) throw itemsError;
 
-  const { data: healthRows, error: healthError } = healthResult;
-  if (healthError) throw healthError;
-
-  const { data: challengeRows, error: challengeError } = challengeResult;
-  if (challengeError) throw challengeError;
-
-  const { data: targets, error: targetsError } = targetsResult;
-  if (targetsError) throw targetsError;
-
-  const { data: mealPlanRows, error: mealPlanError } = mealPlanResult;
-  if (mealPlanError) throw mealPlanError;
-
-  const { data: recipeRows, error: recipesError } = recipesResult;
-  if (recipesError) throw recipesError;
-
-  const payload = {
-    items: items as PlannerItem[],
-    health: firstRow<HealthSummary>(healthRows),
-    targets: targets as HealthTarget[],
-    challenge: firstRow<ChallengeLog>(challengeRows),
-    mealPlan: mealPlanRows as MealPlanEntry[],
-    recipes: recipeRows as RecipeVersion[]
-  };
-  logTiming("kindle-dashboard-events", {
-    base_query_ms: baseQueryMs,
-    payload_build_ms: elapsedMs(started) - baseQueryMs,
-    total_ms: elapsedMs(started)
-  });
+  const payload = { items: items as PlannerItem[] };
+  logTiming("kindle-dashboard-events", { total_ms: elapsedMs(started) });
   return payload;
 }
 
 function getDashboardVersion(data: DashboardData): string {
   return hashText(JSON.stringify({
-    items: [...data.items].sort((a, b) => a.updated_at.localeCompare(b.updated_at)),
-    health: data.health,
-    challenge: data.challenge,
-    mealPlan: data.mealPlan,
-    recipes: data.recipes,
-    targets: [...data.targets].sort((a, b) => a.metric.localeCompare(b.metric))
+    items: [...data.items].sort((a, b) => a.updated_at.localeCompare(b.updated_at))
   }));
-}
-
-function firstRow<T>(rows: unknown): T | null {
-  return Array.isArray(rows) && rows.length > 0 ? rows[0] as T : null;
-}
-
-function dashboardLocalDate(): string {
-  const timezone = Deno.env.get("DASHBOARD_TIMEZONE") || "Asia/Kolkata";
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).formatToParts(new Date());
-  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${byType.year}-${byType.month}-${byType.day}`;
-}
-
-function hashText(value: string): string {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(16);
 }
 
 function corsHeaders(): HeadersInit {
@@ -292,4 +179,13 @@ function elapsedMs(started: number): number {
 
 function logTiming(label: string, timing: Record<string, number>): void {
   console.log(`${label} timing ${JSON.stringify(timing)}`);
+}
+
+function hashText(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16);
 }

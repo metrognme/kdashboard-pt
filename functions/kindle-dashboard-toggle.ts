@@ -31,9 +31,16 @@ export default async function(req: Request): Promise<Response> {
       apiKey: requiredEnv("INSFORGE_API_KEY")
     });
 
+    // completed_at is how the daily digest (telegram-webhook.ts) tells "finished
+    // today" apart from "just moved lists today" — every write that flips `done`
+    // must flip this too, not just the Telegram side of the bot.
     const { error } = await admin.database
       .from("planner_items")
-      .update({ done: body.done, updated_at: new Date().toISOString() })
+      .update({
+        done: body.done,
+        completed_at: body.done ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString()
+      })
       .eq("id", id);
 
     if (error) throw error;

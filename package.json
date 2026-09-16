@@ -1,6 +1,6 @@
 {
   "name": "kindle-dashboard",
-  "version": "0.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,8 @@
     "check": "npm run native:check",
     "telegram:chat-id": "node scripts/get-telegram-chat-id.mjs",
     "telegram:configure": "node scripts/configure-telegram.mjs",
-    "kit:backend": "node scripts/bootstrap-insforge-kit.mjs"
+    "kit:backend": "node scripts/bootstrap-insforge-kit.mjs",
+    "digest:schedule": "node scripts/schedule-daily-digest.mjs"
   },
   "devDependencies": {
     "typescript": "^5.5.4"

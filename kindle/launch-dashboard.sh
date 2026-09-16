@@ -16,13 +16,18 @@ RUN_APP="${RUN_APP:-/tmp/kindle-dashboard-native}"
 CACHE="${CACHE:-/mnt/us/documents/kindle-dashboard-data.json}"
 LOG="${LOG:-/mnt/us/documents/kindle-dashboard-native.log}"
 SAVE_PGM="${SAVE_PGM:-}"
-INTERVAL="${INTERVAL:-3600}"
+INTERVAL="${INTERVAL:-300}"
 DASHBOARD_KEEP_AWAKE="${DASHBOARD_KEEP_AWAKE:-1}"
 DASHBOARD_SLEEP_WINDOW="${DASHBOARD_SLEEP_WINDOW:-off}"
+DASHBOARD_TITLE="${DASHBOARD_TITLE:-Kindle Dashboard}"
 DASHBOARD_TIMEZONE="${DASHBOARD_TIMEZONE:-}"
 [ -n "$DASHBOARD_TIMEZONE" ] && export TZ="$DASHBOARD_TIMEZONE"
-INVERT_IMAGES="${INVERT_IMAGES:-0}"
-[ -n "$DASHBOARD_FORCE_INVERT_IMAGES" ] && INVERT_IMAGES="$DASHBOARD_FORCE_INVERT_IMAGES"
+# Dark mode. DARK_MODE is the current name; INVERT_IMAGES is what config.sh
+# files written before it call the same setting, and it still works, so an
+# upgrade keeps whatever the device was already set to.
+DARK_MODE="${DARK_MODE:-${INVERT_IMAGES:-0}}"
+[ -n "$DASHBOARD_FORCE_DARK_MODE" ] && DARK_MODE="$DASHBOARD_FORCE_DARK_MODE"
+[ -n "$DASHBOARD_FORCE_INVERT_IMAGES" ] && DARK_MODE="$DASHBOARD_FORCE_INVERT_IMAGES"
 
 keep_awake() {
   lipc-set-prop com.lab126.powerd preventScreenSaver 1 >/dev/null 2>&1 || true
@@ -67,11 +72,11 @@ fi
 if [ -x "$NATIVE_APP" ]; then
   cp "$NATIVE_APP" "$RUN_APP" >> "$LOG" 2>&1
   chmod 755 "$RUN_APP" >> "$LOG" 2>&1
-  image_args=""
-  [ "$INVERT_IMAGES" = "1" ] && image_args="--invert-images"
+  theme_args=""
+  [ "$DARK_MODE" = "1" ] && theme_args="--dark"
   save_args=""
   [ -n "$SAVE_PGM" ] && save_args="--save-pgm $SAVE_PGM"
-  exec "$RUN_APP" --url "$DASHBOARD_DATA_URL" --events-url "$DASHBOARD_EVENTS_URL" --toggle-url "$DASHBOARD_TOGGLE_URL" --read-token "$DASHBOARD_READ_TOKEN" --toggle-token "$DASHBOARD_TOGGLE_TOKEN" --cache "$CACHE" --interval "$INTERVAL" --sleep-window "$DASHBOARD_SLEEP_WINDOW" $image_args $save_args >> "$LOG" 2>&1
+  exec "$RUN_APP" --url "$DASHBOARD_DATA_URL" --events-url "$DASHBOARD_EVENTS_URL" --toggle-url "$DASHBOARD_TOGGLE_URL" --read-token "$DASHBOARD_READ_TOKEN" --toggle-token "$DASHBOARD_TOGGLE_TOKEN" --cache "$CACHE" --interval "$INTERVAL" --sleep-window "$DASHBOARD_SLEEP_WINDOW" --title "$DASHBOARD_TITLE" $theme_args $save_args >> "$LOG" 2>&1
 fi
 
 echo "Native dashboard binary not found at $NATIVE_APP." >&2
