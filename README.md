@@ -77,23 +77,28 @@ O jailbreak depende do modelo e da versão de firmware do seu Kindle, e é a
 3. **[Referência de configuração](docs/CONFIGURACAO.md)**: todas as opções,
    no backend e no Kindle.
 
-A versão curta, depois que o seu Kindle já tem KUAL:
+A versão curta, para quem já tem o KUAL no Kindle (o
+[guia de instalação](docs/INSTALACAO.md) explica cada linha e diz como
+conferir se deu certo):
 
 ```sh
 git clone https://github.com/metrognme/kdashboard-pt.git kindle-dashboard && cd kindle-dashboard
 npm install
 npx @insforge/cli login
 npx @insforge/cli create --name kindle-dashboard --region us-east --template empty
-npm run kit:backend                              # banco + segredos + funções
-npm run telegram:chat-id -- --bot-token <token>  # depois de mandar uma mensagem ao bot
-npm run telegram:configure -- --bot-token <token> --chat-id <id> \
-  --webhook-url https://<seu-projeto>.insforge.app/functions/telegram-webhook
-make -C kindle/native extension-zig              # gera o pacote do KUAL
+npm run kit:backend                                   # banco + segredos + funções
+npx @insforge/cli secrets add WEATHER_LAT -23.5505    # sua localização
+npx @insforge/cli secrets add WEATHER_LON -46.6333
+npm run backend:check                                 # testa o backend
+npm run telegram:chat-id -- --bot-token <token>       # depois de mandar "oi" ao bot
+npm run telegram:configure -- --bot-token <token> --chat-id <id>
+npm run digest:schedule                               # resumo diário
+make -C kindle/native extension-zig                   # gera o pacote do KUAL
+npm run native:install -- /caminho/do/Kindle --title "Meu Kindle"
 ```
 
-Depois é só copiar o pacote para o Kindle, preencher o `config.sh` e iniciar
-pelo KUAL. O [guia de instalação](docs/INSTALACAO.md) explica cada etapa em
-detalhe.
+Depois, ejete o Kindle e abra **KUAL → Painel Kindle → Atualizar uma vez
+(claro)**.
 
 ## Usando
 

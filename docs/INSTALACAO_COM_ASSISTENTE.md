@@ -65,9 +65,10 @@ Use este prompt na hora de adicionar os segredos:
 Me ajude a adicionar os segredos do InsForge no servidor. Pergunte um valor
 por vez e nunca mostre o segredo completo de volta depois que eu digitar.
 
-Obrigatórios:
-- INSFORGE_BASE_URL
-- INSFORGE_API_KEY
+O npm run kit:backend já configura INSFORGE_BASE_URL e INSFORGE_API_KEY a
+partir do .insforge/project.json; confira só se ele avisou que não conseguiu.
+
+Recomendados:
 - WEATHER_LAT
 - WEATHER_LON
 
@@ -86,12 +87,11 @@ Opcionais:
 O assistente pode rodar comandos como:
 
 ```sh
-npx @insforge/cli secrets add INSFORGE_BASE_URL https://seu-projeto.insforge.app
-npx @insforge/cli secrets add INSFORGE_API_KEY sua-api-key-do-servidor
 npx @insforge/cli secrets add WEATHER_LAT -23.5505
 npx @insforge/cli secrets add WEATHER_LON -46.6333
 npx @insforge/cli secrets add CALDAV_BASE_URL https://seu-servidor-caldav
 npx @insforge/cli secrets add CALDAV_CALENDAR_PATH /calendars/usuario/pessoal/
+npm run backend:check
 ```
 
 ## Prompt: Telegram
@@ -101,56 +101,18 @@ Depois de criar o bot no BotFather e mandar uma mensagem para ele, use:
 ```text
 Me ajude a conectar o Telegram. Vou passar o token do meu bot. Primeiro rode
 npm run telegram:chat-id para descobrir o ID do meu chat. Depois rode
-npm run telegram:configure com o token, o ID do chat e a URL do
-telegram-webhook do meu projeto. Não use URLs de exemplo e não coloque o
-token em commits nem na documentação. Em seguida, rode npm run
-digest:schedule com a URL do meu projeto para ativar o resumo diário.
-```
-
-A URL do webhook tem este formato:
-
-```text
-https://seu-projeto.insforge.app/functions/telegram-webhook
+npm run telegram:configure com o token e o ID do chat (a URL do webhook vem
+do .insforge/project.json). Não coloque o token em commits nem na
+documentação. Em seguida, rode npm run digest:schedule para ativar o resumo
+diário.
 ```
 
 Com o Telegram conectado, peça ao assistente para revisar as mensagens aceitas
-em `docs/INSTALACAO.md`:
+em `docs/BOT.md`:
 
 ```text
-Mostre os exemplos de mensagens do Telegram em docs/INSTALACAO.md e me ajude
+Mostre os exemplos de mensagens do Telegram em docs/BOT.md e me ajude
 a testar um comando de compras/tarefas e um de agenda, sem expor tokens.
-```
-
-## Prompt: Configuração Do Kindle
-
-Use este prompt quando o backend estiver publicado:
-
-```text
-Gere o config.sh do KUAL para o meu projeto. Use o endereço base do meu
-InsForge nas URLs de dados e de toggle, e o endereço direto function2 na URL
-de eventos. Busque DASHBOARD_READ_TOKEN e DASHBOARD_TOGGLE_TOKEN no InsForge e
-coloque no meu config.sh local. Pergunte qual título devo usar em
-DASHBOARD_TITLE e de quanto em quanto tempo o Kindle deve buscar novidades
-(INTERVAL, padrão 180 segundos), explicando que intervalos menores e a
-atualização instantânea (DASHBOARD_LIVE_UPDATES) gastam mais bateria.
-Não altere o config.sh.example com os dados reais do meu projeto; crie ou
-mostre um config.sh local.
-```
-
-O config gerado deve ficar assim:
-
-```sh
-DASHBOARD_DATA_URL="https://seu-projeto.insforge.app/functions/kindle-dashboard-data"
-DASHBOARD_EVENTS_URL="https://seu-projeto.function2.insforge.app/kindle-dashboard-events"
-DASHBOARD_TOGGLE_URL="https://seu-projeto.insforge.app/functions/kindle-dashboard-toggle"
-DASHBOARD_READ_TOKEN="troque-pelo-seu-read-token"
-DASHBOARD_TOGGLE_TOKEN="troque-pelo-seu-toggle-token"
-DASHBOARD_TITLE="Meu Kindle"
-INTERVAL="180"
-DASHBOARD_LIVE_UPDATES="0"
-DASHBOARD_KEEP_AWAKE="1"
-DASHBOARD_SLEEP_WINDOW="off"
-DARK_MODE="0"
 ```
 
 ## Prompt: Compilar O Pacote Do KUAL
@@ -166,10 +128,7 @@ Se o Zig estiver instalado:
 ```text
 Compile o pacote do KUAL com make -C kindle/native extension-zig. Se o zig
 não estiver no PATH, me pergunte o caminho. Depois me diga onde o
-kindle-dashboard-kual.tar.gz foi gravado e me lembre de manter o config.sh
-local. Se for instalar num Kindle conectado, descubra primeiro o caminho onde
-ele está montado (me pergunte se não tiver certeza), defina as variáveis
-DASHBOARD_* explicitamente e rode npm run native:install -- <caminho>.
+kindle-dashboard-kual.tar.gz foi gravado.
 ```
 
 Se houver um compilador ARM para Kindle instalado:
@@ -179,14 +138,50 @@ Compile o pacote do KUAL com make -C kindle/native extension. Se o compilador
 cruzado não existir, me pergunte o KINDLE_CXX ou sugira o caminho com Zig.
 ```
 
+## Prompt: Instalar No Kindle
+
+Use este prompt quando o backend estiver publicado:
+
+```text
+Vamos instalar no Kindle. Pergunte qual título devo usar no cabeçalho e de
+quanto em quanto tempo o Kindle deve buscar novidades (INTERVAL, padrão 180
+segundos), explicando que intervalos menores e a atualização instantânea
+(DASHBOARD_LIVE_UPDATES) gastam mais bateria. Descubra onde o Kindle está
+montado (me pergunte se não tiver certeza) e rode
+npm run native:install -- <caminho> --title "<título>", que cria o config.sh
+com as URLs e os tokens do meu projeto. Se eu quiser um INTERVAL diferente,
+edite só o config.sh do Kindle, nunca o config.sh.example.
+```
+
+O config gerado fica assim:
+
+```sh
+DASHBOARD_DATA_URL="https://seu-projeto.insforge.app/functions/kindle-dashboard-data"
+DASHBOARD_EVENTS_URL=""
+DASHBOARD_TOGGLE_URL="https://seu-projeto.insforge.app/functions/kindle-dashboard-toggle"
+DASHBOARD_READ_TOKEN="(o seu read token)"
+DASHBOARD_TOGGLE_TOKEN="(o seu toggle token)"
+DASHBOARD_TITLE="Meu Kindle"
+INTERVAL="180"
+DASHBOARD_LIVE_UPDATES="0"
+DASHBOARD_KEEP_AWAKE="1"
+DASHBOARD_SLEEP_WINDOW="off"
+DARK_MODE="0"
+```
+
+A `DASHBOARD_EVENTS_URL` fica vazia porque a atualização instantânea vem
+desligada. Para ligá-la, preencha com o endereço direto `function2` das
+funções e mude `DASHBOARD_LIVE_UPDATES` para `"1"`
+([CONFIGURACAO.md](CONFIGURACAO.md)).
+
 ## Prompt: Verificar
 
 Use depois do deploy e da instalação no Kindle:
 
 ```text
-Verifique a instalação sem expor segredos. Confira se npm run check passa.
-Teste a URL de dados com curl e confirme que ela devolve JSON com ok:true e
-com weather.available e agenda.available iguais a true. Se o Kindle estiver
+Verifique a instalação sem expor segredos. Confira se npm run check passa e
+rode npm run backend:check (ele testa a URL de dados como o Kindle faz e diz
+se o clima e a agenda estão disponíveis). Se o Kindle estiver
 conectado (me pergunte o caminho), confira se o
 extensions/kindle-dashboard/config.sh dele tem as chaves obrigatórias, sem
 mostrar os valores secretos, e leia os logs do painel em documents/ no
@@ -206,7 +201,7 @@ curl -N -H "X-Dashboard-Read-Token: <read-token>" https://seu-projeto.function2.
 Faça você mesmo, ou supervisione de perto:
 
 - Criar o bot do Telegram no BotFather.
-- Digitar as chaves de administrador do InsForge.
+- Fazer o login no InsForge (`npx @insforge/cli login` abre o navegador).
 - Digitar os tokens do bot do Telegram.
 - Digitar a senha (ou senha de app) do seu CalDAV.
 - Copiar arquivos para o Kindle, se não se sentir à vontade com o assistente
@@ -218,8 +213,8 @@ Faça você mesmo, ou supervisione de perto:
 Se o painel estiver em branco ou desatualizado:
 
 ```text
-Investigue o problema do meu Painel Kindle. Comece pela URL de dados
-publicada, depois as URLs do config.sh do KUAL, e depois os logs do Kindle.
+Investigue o problema do meu Painel Kindle. Comece pelo npm run
+backend:check, depois as URLs do config.sh do KUAL, e depois os logs do Kindle.
 Lembre que, sem DASHBOARD_LIVE_UPDATES="1", as mudanças só aparecem a cada
 INTERVAL. Se a atualização instantânea estiver ligada, considere que o
 endpoint /functions normal não serve para SSE e teste os eventos pela URL

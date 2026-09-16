@@ -26,6 +26,9 @@ só precisa ler dois deles, para colocar no `config.sh`:
 | `TELEGRAM_WEBHOOK_SECRET` | Telegram | Prova que a mensagem veio mesmo do Telegram. |
 | `DAILY_DIGEST_TOKEN` | Agendador | Autentica o disparo de hora em hora do resumo diário. |
 
+O `npm run native:install` lê os dois e grava no `config.sh` para você. Para
+ver os valores (campo `value`):
+
 ```sh
 npx @insforge/cli secrets get DASHBOARD_READ_TOKEN --json
 npx @insforge/cli secrets get DASHBOARD_TOGGLE_TOKEN --json
@@ -36,10 +39,14 @@ O `npm run telegram:configure` configura `TELEGRAM_BOT_TOKEN` e
 
 ### Obrigatórios
 
+O `npm run kit:backend` configura estes dois sozinho, lendo o
+`.insforge/project.json` que o `create` (ou o `link`) grava na pasta. Só
+configure à mão se a pasta não estiver vinculada.
+
 | Chave | Exemplo | Observações |
 | --- | --- | --- |
-| `INSFORGE_BASE_URL` | `https://abc123.us-east.insforge.app` | A URL da API do seu projeto (no painel do InsForge, ou com `npx @insforge/cli current`). |
-| `INSFORGE_API_KEY` | — | A chave de API de servidor do projeto. Nunca coloque no Kindle. |
+| `INSFORGE_BASE_URL` | `https://abc123.us-east.insforge.app` | A URL da API do seu projeto (campo `oss_host` do `.insforge/project.json`, ou no painel do InsForge). |
+| `INSFORGE_API_KEY` | — | A chave de API de servidor do projeto (campo `api_key`). Nunca coloque no Kindle. |
 
 ### Fuso horário
 

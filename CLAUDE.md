@@ -72,7 +72,8 @@ InsForge usar. Leia antes de mexer em qualquer coisa do backend.
 Backend (CLI do InsForge, lê `.insforge/project.json`):
 
 ```sh
-npm run kit:backend                            # aplica migrations + garante segredos + publica as 4 funções
+npm run kit:backend                            # aplica migrations + garante segredos (INSFORGE_* vêm do .insforge/project.json) + publica as 4 funções
+npm run backend:check                          # busca o JSON do painel como o Kindle e diz em português o que falta
 npm run kit:backend -- --skip-secrets           # republica sem mexer nos segredos
 npm run kit:backend -- --skip-deploy            # só migrations/segredos
 npx @insforge/cli functions deploy <slug> --file functions/<slug>.ts --name "<Nome>"
@@ -81,12 +82,19 @@ npx @insforge/cli db query "<sql>"
 npx @insforge/cli logs function.logs
 ```
 
+Os scripts locais (`scripts/*.mjs`) compartilham o
+`scripts/insforge-project.mjs`: sem `--base-url`, a URL do backend vem de
+`INSFORGE_BASE_URL` ou do `oss_host` do `.insforge/project.json`, e os tokens
+são lidos com `secrets get`. Por isso a documentação para o usuário não pede
+URLs nem tokens à mão; mantenha assim. (A regra de não compartilhar módulos
+vale só para `functions/`.)
+
 Telegram e resumo diário:
 
 ```sh
-npm run telegram:chat-id -- --bot-token <token>     # descobre o chat id pelo getUpdates
-npm run telegram:configure -- --bot-token <token> --chat-id <id> --base-url <url>
-npm run digest:schedule -- --base-url <INSFORGE_BASE_URL>   # disparo de hora em hora do resumo, uma vez só
+npm run telegram:chat-id -- --bot-token <token>     # descobre o chat id pelo getUpdates (falha com 409 depois que o webhook existe)
+npm run telegram:configure -- --bot-token <token> --chat-id <id> [--base-url <url>]
+npm run digest:schedule [-- --base-url <url>]       # disparo de hora em hora do resumo, uma vez só
 ```
 
 Programa nativo:
@@ -97,7 +105,7 @@ make -C kindle/native local            # compilação local -> build/kindle-dash
 make -C kindle/native kindle           # compilação ARM, precisa de arm-linux-gnueabi-g++ (KINDLE_CXX= para trocar)
 make -C kindle/native extension-zig    # compilação ARM + tarball do KUAL via Zig (ZIG= se não estiver no PATH)
 make -C kindle/native extension        # o mesmo, com o compilador cruzado GNU
-npm run native:install -- /caminho/do/Kindle [--force]
+npm run native:install -- /caminho/do/Kindle [--title "X"] [--base-url <url>] [--force]
 npm run native:proof -- /caminho/do/Kindle
 ```
 

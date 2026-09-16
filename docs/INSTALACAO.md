@@ -1,602 +1,458 @@
 # Guia de Instalação
 
-Este guia leva você de um Kindle desbloqueado até o painel funcionando. Você
-vai usar seu próprio backend (InsForge), seu próprio bot do Telegram e o
-pacote do KUAL no Kindle. Nada aqui se conecta ao servidor de outra pessoa.
+Este guia leva você de um Kindle desbloqueado até o painel funcionando na
+tela, com o bot do Telegram editando as listas. Tudo roda em contas suas: o
+seu backend (InsForge), o seu bot e o seu Kindle. Nada aqui se conecta ao
+servidor de outra pessoa.
 
-Se quiser que um assistente de código faça isso junto com você, use o
-[INSTALACAO_COM_ASSISTENTE.md](INSTALACAO_COM_ASSISTENTE.md). Todas as
-configurações citadas abaixo estão descritas em
-[CONFIGURACAO.md](CONFIGURACAO.md).
+- **Tempo:** cerca de uma hora, sem contar o jailbreak.
+- **Nível:** você vai copiar e colar comandos num terminal. Não precisa saber
+  programar.
+- **Cada etapa termina com um ✅ "Deu certo se…".** Só avance quando ele
+  bater. Se não bater, a [Solução de problemas](#solução-de-problemas) está
+  organizada pelas mesmas etapas.
 
-**Tempo:** cerca de uma hora, sem contar o jailbreak.
+Prefere que um assistente de código (Claude Code, Codex, Cursor…) faça junto
+com você? Use o [INSTALACAO_COM_ASSISTENTE.md](INSTALACAO_COM_ASSISTENTE.md).
 
-## Do Que Você Precisa
+## Visão Geral
 
-- Um Kindle desbloqueado com o KUAL instalado (passo 0).
-- Um computador com macOS ou Linux, com Node.js 20+, npm e git.
-- Um cabo USB para o Kindle.
-- Uma conta no [InsForge](https://insforge.dev) (o plano gratuito basta).
-- Uma conta no Telegram.
-- Opcional: um calendário CalDAV para a agenda.
-- Opcional: uma [chave gratuita do Gemini](https://aistudio.google.com/apikey)
-  para mensagens de texto livre e de voz.
-- Para compilar o pacote do Kindle: [Zig](https://ziglang.org/download/) (o
-  mais fácil) ou um compilador cruzado ARM.
+| Etapa | Onde | Tempo |
+| --- | --- | --- |
+| [0. Jailbreak e KUAL](#0-jailbreak-e-kual) | Kindle | varia |
+| [1. Prepare o computador](#1-prepare-o-computador) | Computador | 10 min |
+| [2. Crie o backend](#2-crie-o-backend) | Computador | 10 min |
+| [3. Clima, fuso e extras](#3-clima-fuso-e-extras) | Computador | 5 min |
+| [4. Crie o bot do Telegram](#4-crie-o-bot-do-telegram) | Celular e computador | 10 min |
+| [5. Instale no Kindle](#5-instale-no-kindle) | Computador e cabo USB | 10 min |
+| [6. Ligue o painel](#6-ligue-o-painel) | Kindle | 5 min |
+| [7. Primeiro uso](#7-primeiro-uso) | Telegram e Kindle | 5 min |
 
-## 0. Faça O Jailbreak E Instale O KUAL
+Você só vai precisar anotar **duas coisas**: o token do bot (etapa 4) e o
+número do seu chat (etapa 4). As URLs e os tokens do painel são preenchidos
+pelos scripts.
 
-Este projeto roda como uma extensão do KUAL (Kindle Unified Application
-Launcher), então o Kindle precisa de jailbreak e do KUAL antes de tudo. O
-método depende do modelo e da versão do firmware e muda com o tempo. Por isso,
-siga as instruções atualizadas para o seu aparelho em vez de uma cópia aqui:
+## 0. Jailbreak E KUAL
 
-- [kindlemodding.org](https://kindlemodding.org/): guias atualizados de
-  jailbreak e KUAL (em inglês).
+O painel roda como uma extensão do KUAL (Kindle Unified Application
+Launcher), então o Kindle precisa de jailbreak e do KUAL. O método depende do
+modelo e da versão do firmware e muda com o tempo, então siga as instruções
+atualizadas para o seu aparelho:
+
+- [kindlemodding.org](https://kindlemodding.org/): guias de jailbreak e KUAL
+  (em inglês).
 - [MobileRead Kindle Developer's Corner](https://www.mobileread.com/forums/forumdisplay.php?f=150):
   a comunidade por trás da maioria das ferramentas para Kindle (em inglês).
 
-Você está pronto quando aparecer um item **KUAL** na biblioteca do Kindle e
-ele abrir um menu. Se o guia que você seguir recomendar, desative também as
-atualizações automáticas de firmware, porque uma atualização pode remover o
-jailbreak.
+Se o guia que você seguir recomendar, desative as atualizações automáticas de
+firmware: uma atualização pode remover o jailbreak. Deixe também o **Wi-Fi do
+Kindle configurado**, porque o painel busca os dados pela internet.
 
-O pacote do Kindle nunca guarda a chave de administrador do InsForge. Ele lê
-os dados por URLs do painel protegidas por token e envia as marcações de
-itens pela função de toggle.
+✅ **Deu certo se** aparece um item **KUAL** na biblioteca do Kindle e ele abre
+um menu.
 
-## 1. Crie Seu Backend
+## 1. Prepare O Computador
 
-Clone o repositório, instale as dependências e entre no InsForge:
+Os comandos deste guia são para **macOS ou Linux**. No Windows, o caminho mais
+próximo é o WSL (Ubuntu), mas este guia não foi testado nele.
+
+Instale o que falta:
+
+| Programa | Para quê | Como instalar |
+| --- | --- | --- |
+| Node.js 20 ou mais novo | Rodar os scripts de instalação | [nodejs.org](https://nodejs.org/pt) (versão LTS) |
+| git, make, curl e tar | Baixar e compilar | macOS: `xcode-select --install`. Linux: já vêm na maioria das distribuições (Ubuntu/Debian: `sudo apt install git make curl`) |
+| Zig | Compilar o programa do Kindle | macOS: `brew install zig`. Linux: pelo gerenciador de pacotes da distribuição, ou baixe em [ziglang.org/download](https://ziglang.org/download/) |
+
+Abra um terminal e baixe o projeto:
 
 ```sh
 git clone https://github.com/metrognme/kdashboard-pt.git kindle-dashboard
 cd kindle-dashboard
 npm install
+```
+
+**Rode todos os comandos seguintes dentro dessa pasta `kindle-dashboard`.** Se
+fechar o terminal, volte para ela com `cd kindle-dashboard` antes de continuar.
+
+✅ **Deu certo se** `node -v` mostra `v20` ou mais, `zig version` mostra uma
+versão e o `npm install` terminou sem `ERR!`.
+
+## 2. Crie O Backend
+
+O backend é onde ficam as listas e o bot. Ele roda no
+[InsForge](https://insforge.dev), e o plano gratuito basta.
+
+Entre na sua conta (o navegador abre para você confirmar):
+
+```sh
 npx @insforge/cli login
 ```
 
-Crie um projeto novo no InsForge, ou vincule esta pasta a um projeto vazio que
-você já tenha:
+Crie um projeto novo. `us-east` é a região mais próxima do Brasil entre as
+disponíveis:
 
 ```sh
 npx @insforge/cli create --name kindle-dashboard --region us-east --template empty
 ```
 
-Prepare o banco, os segredos gerados e as funções:
+<details>
+<summary>Já tenho um projeto vazio no InsForge e quero usar ele</summary>
+
+Descubra o ID dele e vincule esta pasta:
+
+```sh
+npx @insforge/cli list
+npx @insforge/cli link --project-id <id-do-projeto>
+```
+
+Use um projeto **vazio**: o kit cria as próprias tabelas.
+
+</details>
+
+Agora prepare tudo de uma vez:
 
 ```sh
 npm run kit:backend
 ```
 
-O script de preparação faz três coisas:
+Esse comando:
 
-- aplica as migrations do banco;
-- cria os segredos `TELEGRAM_WEBHOOK_SECRET`, `DASHBOARD_READ_TOKEN`,
-  `DASHBOARD_TOGGLE_TOKEN` e `DAILY_DIGEST_TOKEN`, se ainda não existirem;
-- publica as funções do painel.
+- cria as tabelas do banco;
+- configura a URL e a chave do backend (lidas do projeto que você acabou de
+  criar);
+- gera os tokens que o Kindle e o bot usam;
+- publica as quatro funções do painel.
 
-> Se o comando terminar o trabalho mas não devolver o terminal, veja
-> "Travou no deploy?" em [Solução de Problemas](#solução-de-problemas).
+Ele leva alguns minutos. Se o terminal ficar parado por mais de dois minutos
+sem mostrar nada, veja [Travou no deploy?](#travou-no-deploy).
 
-## 2. Adicione Os Segredos Do Backend
+✅ **Deu certo se** o comando termina com `Backend pronto.` e mostra a URL do
+seu backend (algo como `https://abc123.us-east.insforge.app`).
 
-Configure a URL do backend e a chave de API. Esses valores são segredos das
-funções no servidor, não do Kindle. Os dois ficam no painel do seu projeto no
-InsForge.
+## 3. Clima, Fuso E Extras
 
-```sh
-npx @insforge/cli secrets add INSFORGE_BASE_URL https://seu-projeto.insforge.app
-npx @insforge/cli secrets add INSFORGE_API_KEY sua-api-key-do-servidor
-```
+### Clima (recomendado)
 
-O fuso horário padrão é o de Brasília (`America/Sao_Paulo`). Se você estiver
-em outro fuso, configure o seu [nome IANA](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones):
-
-```sh
-npx @insforge/cli secrets add DASHBOARD_TIMEZONE America/Manaus
-```
-
-Clima (Open-Meteo: gratuito, sem chave, só a sua localização em graus
-decimais; no Google Maps, clique com o botão direito num ponto para copiar):
+O clima vem do [Open-Meteo](https://open-meteo.com): gratuito e sem cadastro.
+Ele só precisa da sua localização em graus decimais. No
+[Google Maps](https://maps.google.com), clique com o botão direito no mapa, e
+o primeiro item do menu mostra a latitude e a longitude (clique para copiar).
 
 ```sh
 npx @insforge/cli secrets add WEATHER_LAT -23.5505
 npx @insforge/cli secrets add WEATHER_LON -46.6333
 ```
 
-Agenda (opcional; é o seu servidor CalDAV). Se pular este bloco, a faixa da
-agenda só aparece como indisponível:
+Troque os números pelos seus. O primeiro é a latitude, o segundo, a longitude;
+os dois costumam ser negativos no Brasil.
+
+### Fuso horário (só fora do horário de Brasília)
+
+O padrão é `America/Sao_Paulo`. Se você estiver em outro fuso, configure o
+[nome IANA](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)
+dele (ex.: `America/Manaus`, `America/Cuiaba`, `America/Rio_Branco`,
+`America/Noronha`):
+
+```sh
+npx @insforge/cli secrets add DASHBOARD_TIMEZONE America/Manaus
+```
+
+### Extras opcionais
+
+Dá para pular os dois e voltar aqui depois: o resto funciona sem eles.
+
+<details>
+<summary><b>IA: mensagens em texto livre e áudio</b></summary>
+
+Sem IA, o bot funciona pelo menu de botões e entende comandos simples ("comprar
+leite", "já comprei o leite"). Com IA, você escreve como quiser, manda áudios e
+agenda eventos com datas como "amanhã às 14h".
+
+Gere uma chave gratuita do Gemini no
+[Google AI Studio](https://aistudio.google.com/apikey) e configure:
+
+```sh
+npx @insforge/cli secrets add LLM_API_KEY sua-chave-do-gemini
+```
+
+Os outros valores já têm padrões bons. Só mexa se souber por quê:
+
+- **`LLM_MODEL`** (padrão `gemini-3.5-flash-lite`) é uma decisão de cota. No
+  plano gratuito, os modelos flash completos permitem só cerca de 20
+  requisições por dia; o flash-lite permite bem mais. Veja os seus limites em
+  [ai.dev/rate-limit](https://ai.dev/rate-limit).
+- **`LLM_REASONING_EFFORT`** (padrão `low`) deixa as respostas em cerca de
+  1 segundo, em vez de 9 a 13.
+- **`LLM_BASE_URL`** permite usar outro provedor compatível com OpenAI. Nesse
+  caso, os áudios ficam indisponíveis (eles precisam do Gemini).
+
+Quando a cota do dia acaba, o bot avisa e os botões continuam funcionando.
+
+**Privacidade:** com a IA ligada, as mensagens que o bot não entende sozinho
+vão para o provedor da IA (o Google, no padrão).
+
+</details>
+
+<details>
+<summary><b>Agenda (calendário CalDAV)</b></summary>
+
+A agenda mostra os seus próximos compromissos e deixa o bot criar e cancelar
+eventos. Ela funciona com qualquer calendário que ofereça CalDAV (Nextcloud,
+iCloud, Radicale, Home Assistant, entre outros). Na documentação do seu
+provedor, procure o endereço CalDAV e, se houver, crie uma **senha de app**
+em vez de usar a sua senha principal.
 
 ```sh
 npx @insforge/cli secrets add CALDAV_BASE_URL https://seu-servidor-caldav
 npx @insforge/cli secrets add CALDAV_CALENDAR_PATH /calendars/usuario/pessoal/
-npx @insforge/cli secrets add CALDAV_USERNAME seu-usuario-caldav
-npx @insforge/cli secrets add CALDAV_PASSWORD sua-senha-ou-senha-de-app
+npx @insforge/cli secrets add CALDAV_USERNAME seu-usuario
+npx @insforge/cli secrets add CALDAV_PASSWORD sua-senha-de-app
 ```
 
-Interpretação de linguagem natural (opcional). Funciona com qualquer endpoint
-compatível com OpenAI; o padrão é o
-[Gemini](https://ai.google.dev/gemini-api/docs/openai), cuja chave você gera
-no [Google AI Studio](https://aistudio.google.com/apikey):
+Configure os quatro, ou nenhum. O caminho do calendário termina com `/`.
+
+</details>
+
+### Teste o backend
 
 ```sh
-npx @insforge/cli secrets add LLM_API_KEY sua-chave-do-gemini
-npx @insforge/cli secrets add LLM_BASE_URL https://generativelanguage.googleapis.com/v1beta/openai
-npx @insforge/cli secrets add LLM_MODEL gemini-3.5-flash-lite
-npx @insforge/cli secrets add LLM_REASONING_EFFORT low
+npm run backend:check
 ```
 
-Vale entender duas dessas configurações em vez de só copiar:
+✅ **Deu certo se** aparece `OK   Backend respondendo` e `OK   Clima: ...`. A
+agenda aparece como indisponível se você não a configurou, o que é normal.
 
-- **`LLM_MODEL`** é uma decisão de cota. No plano gratuito do Gemini, os
-  modelos flash completos permitem só cerca de **20 requisições por dia**, e
-  uma tarde de uso acaba com isso; os modelos flash-lite permitem bem mais.
-  Confira os seus números em [ai.dev/rate-limit](https://ai.dev/rate-limit).
-- **`LLM_REASONING_EFFORT=low`** é o que deixa as respostas rápidas. Por
-  padrão, o Gemini 3.x "pensa" antes de responder, o que transforma uma
-  resposta de um segundo numa de nove a treze segundos, sem ganho nenhum numa
-  tarefa tão pequena.
-
-Mensagens repetidas não gastam cota. Uma frase que a IA já interpretou é
-respondida a partir de um cache local, cerca de 5x mais rápido e de graça. Só
-ações de lista entram no cache: uma frase de agenda como "reunião amanhã às
-14h" depende da data atual, então guardá-la estaria errado amanhã.
-
-Sem `LLM_API_KEY`, ou quando a cota do dia acaba, o webhook usa o
-interpretador de comandos embutido, que entende verbos em português e em
-inglês. Nesse modo:
-
-- **Menu de botões (`/menu`):** funciona por completo para Tarefa, Nota e
-  Compras, porque a categoria vem explícita no botão e nada precisa ser
-  adivinhado.
-- **Comandos de lista em texto livre:** adicionar, concluir, reabrir, apagar
-  e limpar continuam funcionando.
-- **Agenda:** cancelar um evento pelo nome funciona. Só agendar um evento com
-  data relativa, como "amanhã", precisa da IA.
-
-Quando o bot bate no limite de cota, ele avisa e sugere usar os botões.
-
-## 3. Conecte O Telegram
+## 4. Crie O Bot Do Telegram
 
 1. No Telegram, abra o [@BotFather](https://t.me/BotFather), mande `/newbot`
-   e siga as instruções. O BotFather responde com um token parecido com
-   `123456789:AA...`.
-2. Abra o seu bot novo, toque em **Iniciar** e mande qualquer mensagem.
-3. Descubra o ID do seu chat:
+   e escolha um nome e um usuário para o bot. O BotFather responde com um
+   **token** parecido com `123456789:AAH...`. **Anote.** Ele é a senha do seu
+   bot: não mostre para ninguém.
+2. Abra a conversa com o seu bot novo (o BotFather manda o link), toque em
+   **Iniciar** e mande qualquer mensagem, como "oi". Ele ainda não vai
+   responder; isso é esperado.
+3. No computador, descubra o número do seu chat:
+
+   ```sh
+   npm run telegram:chat-id -- --bot-token 123456789:AAH...
+   ```
+
+   Procure a linha com o seu nome e **anote o número** depois de `chat_id=`.
+
+4. Ligue o bot ao seu backend, usando o token e o número:
+
+   ```sh
+   npm run telegram:configure -- --bot-token 123456789:AAH... --chat-id 123456789
+   ```
+
+5. Ative o resumo diário (uma mensagem por noite com o que foi feito):
+
+   ```sh
+   npm run digest:schedule
+   ```
+
+O bot só obedece o chat que você configurou e ignora qualquer outra pessoa.
+Para usá-lo em família, veja
+[Compartilhando com a família](BOT.md#compartilhando-com-a-família).
+
+✅ **Deu certo se** você manda `/start` para o bot e ele responde com um
+teclado de botões (📋 Tarefa, 📝 Nota, 🛒 Compras, 📅 Agenda). Mande
+`comprar leite`: ele deve confirmar que anotou em 🛒 Compras.
+
+## 5. Instale No Kindle
+
+### Compile o pacote
 
 ```sh
-npm run telegram:chat-id -- --bot-token 123456789:token-do-bot
+make -C kindle/native extension-zig
 ```
 
-Registre o webhook e salve o token do bot e o chat autorizado:
+✅ **Deu certo se** a última linha é
+`Packaged build/kindle-dashboard-kual.tar.gz`.
 
-```sh
-npm run telegram:configure -- \
-  --bot-token 123456789:token-do-bot \
-  --chat-id 123456789 \
-  --webhook-url https://seu-projeto.insforge.app/functions/telegram-webhook
-```
+<details>
+<summary>Quero uma foto na caixa do canto superior esquerdo</summary>
 
-Ative o resumo diário (uma mensagem toda noite com o que foi feito). Isso só
-precisa rodar uma vez:
-
-```sh
-npm run digest:schedule -- --base-url https://seu-projeto.insforge.app
-```
-
-Mande `/start` para o seu bot para ver o menu de botões, ou teste um comando
-em texto livre:
-
-```text
-comprar leite e ovos
-adicionar limpar a mesa nas tarefas
-anota a senha do wifi
-já comprei o leite
-reunião amanhã às 14h com o time
-```
-
-## Mensagens Que O Telegram Entende
-
-Há dois jeitos de falar com o bot:
-
-- **Menu de botões:** sempre funciona e não usa IA.
-- **Texto livre:** com `LLM_API_KEY` configurada, você pode escrever de forma
-  natural. Sem ela, o interpretador embutido entende os padrões abaixo.
-
-Esta seção é um tour. O [BOT.md](BOT.md) é a referência completa:
-
-- controle de acesso;
-- todas as respostas que o bot pode dar e o que significam;
-- como a mensagem é interpretada;
-- limites e operação no dia a dia.
-
-### Quem pode usar o seu bot
-
-O `@nome` do seu bot é público e qualquer pessoa pode abrir uma conversa com
-ele, mas ele só responde ao chat que você registrou como
-`TELEGRAM_ALLOWED_CHAT_ID`. Todos os outros recebem **silêncio**: a mensagem é
-descartada antes de ser interpretada, antes de chegar à IA e antes de qualquer
-gravação. Toques em botões passam pela mesma verificação, então encaminhar
-uma confirmação para alguém não entrega um botão funcionando.
-
-A verificação é feita no *chat*, não na pessoa. Para compartilhar o bot com a
-família, coloque-o num grupo e autorize o ID desse grupo. Veja as duas
-configurações que você precisa mudar antes em
-[BOT.md](BOT.md#compartilhando-com-a-família).
-
-### Menu de botões
-
-Mande `/start` (ou `/menu`) uma vez. O bot fixa um teclado de 4 botões na
-conversa:
-
-```text
-📋 Tarefa      📝 Nota
-🛒 Compras     📅 Agenda
-```
-
-Toque num botão, o bot pergunta o que adicionar, e você responde. Só isso.
-Para as três listas, nada é classificado nem adivinhado, então esse caminho
-funciona igual com ou sem `LLM_API_KEY`. Separe várias entradas com vírgulas
-para adicionar tudo numa mensagem só.
-
-`📅 Agenda` é a exceção: o texto da sua resposta ainda vai para a IA, para que
-"reuniao amanha as 14h" vire uma data e hora de verdade.
-
-`👀 Ver listas` é o quinto botão e responde na hora, sem perguntar nada: mostra
-a agenda e depois as três listas. `/listas` (ou `/ver`) faz o mesmo pelo
-teclado.
-
-`/exportar` manda os mesmos dados como arquivo em vez de mensagem:
-
-- o formato padrão é `.json`; escreva `yaml` para receber `.yaml`;
-- escreva o nome de uma categoria (`compras`, `tarefas`, `notas`, `agenda`)
-  para exportar só ela, por exemplo `/exportar compras yaml`;
-- sem categoria, exporta tudo.
-
-O teclado é persistente: fica disponível até você escondê-lo, e `/menu` o traz
-de volta. `/ajuda` mostra a colinha completa de frases em texto livre.
-
-### Desfazer
-
-Toda confirmação que realmente mudou algo vem com um botão `↩️ Desfazer`. Ele
-reverte exatamente aquela mensagem:
-
-- itens apagados voltam com o estado original de feito/não feito;
-- o que foi marcado é desmarcado;
-- o que foi criado é apagado;
-- um evento cancelado é restaurado a partir do ICS original.
-
-Isso importa porque concluir e apagar encontram o item por um trecho do
-texto, então o bot pode acertar uma linha que você não queria. O botão vale
-por 24 horas e funciona uma vez; tocar de novo avisa que a ação já foi
-desfeita.
-
-### Quando o bot não tem certeza, ele pergunta
-
-Se uma palavra combina com mais de um item (por exemplo, "já comprei o pão"
-com `pão` e `pão de forma` na lista), nada é alterado. O bot mostra as opções
-como botões e aplica só a que você tocar. Há também:
-
-- `⚡ Todos`, para quando você queria mesmo pegar todos;
-- `✖️ Cancelar`, para desistir.
-
-O mesmo acontece em dois outros casos:
-
-- **Cancelar evento:** quando o nome combina com vários eventos.
-- **Adicionar item sem citar a lista:** o bot precisa adivinhar a lista, então
-  salva o item na hora e oferece movê-lo. Nada fica esperando um toque seu.
-
-### Mensagens de voz
-
-Segure para gravar e fale: "comprar leite, pão e ovos". O bot responde com o
-que ouviu, seguido do que fez:
-
-```text
-🎤 "comprar leite, pão e ovos"
-✅ Anotei 3 itens em 🛒 Compras: leite, pão, ovos.
-```
-
-A transcrição e a interpretação acontecem numa única chamada à IA, então um
-áudio gasta da cota a mesma requisição que uma mensagem digitada. Os limites
-são 5 minutos e 5 MB.
-
-Esse caminho fala com o endpoint nativo do Gemini, e não com o compatível com
-OpenAI, porque aquela camada só aceita áudio `wav` e `mp3`, enquanto o
-Telegram manda OGG/Opus. O endereço é derivado de `LLM_BASE_URL`
-automaticamente; defina `LLM_AUDIO_BASE_URL` para sobrescrever. Com outro
-provedor, o bot avisa que o áudio está indisponível e o resto continua
-funcionando.
-
-### Listas de compras, tarefas e notas
-
-Listas aceitas (os apelidos valem em português e inglês, com ou sem acento):
-
-- Compras: `compras`, `comprar`, `mercado`, `supermercado`, `feira`, `grocery`, `groceries`, `shopping`, `market`
-- Tarefas: `tarefa`, `tarefas`, `afazeres`, `pendências`, `todo`, `to-do`, `task`, `tasks`, `errand`, `errands`
-- Notas: `nota`, `notas`, `anotação`, `recado`, `note`, `notes`
-
-As três aparecem na tela do Kindle, cada uma na sua caixa, e as três podem ser
-tocadas para abrir em tela cheia.
-
-Os itens aparecem **numerados**, com os mesmos números do `/listas`, e os
-**importantes** vêm primeiro, marcados com `!`:
-
-```text
-[ ] !1. PAGAR LUZ
-[ ] 2. REGAR HORTA
-[X] 3. LAVAR LOUCA
-```
-
-Use esses números nos comandos:
-
-```text
-exclua o item 2 da lista de tarefas
-conclua a tarefa 1
-mude o texto do item 2 das compras para leite integral
-marca a tarefa 2 como importante
-tira a importância da tarefa 1
-```
-
-Nas caixas pequenas da tela principal, textos longos aparecem cortados; abra a
-lista (toque na caixa) para ver o texto inteiro.
-
-Adicionar itens:
-
-```text
-comprar leite e pão
-preciso de maçã, iogurte e aveia no mercado
-adicionar limpar a mesa nas tarefas
-anota o código do portão 4417 nas notas
-```
-
-Marcar como feito:
-
-```text
-já comprei o leite
-feito: limpar a mesa
-```
-
-Reabrir um item:
-
-```text
-desmarca o leite
-```
-
-Remover itens:
-
-```text
-tira os ovos das compras
-apaga limpar a mesa das tarefas
-```
-
-Limpar uma lista:
-
-```text
-limpa as tarefas
-esvazia as compras
-```
-
-Uma mensagem pode ter vários pedidos diferentes:
-
-```text
-anota o código do alarme 7788, adiciona regar as plantas nas tarefas
-e marca os ovos como comprados
-```
-
-Cada pedido vai para a sua lista, a resposta mostra todos, e um único
-`↩️ Desfazer` desfaz a mensagem inteira. Vários itens do mesmo tipo contam
-como um pedido só: "comprar leite e pão" é uma adição com dois itens, não duas
-adições.
-
-Se um comando de concluir, reabrir ou remover não citar a lista, o webhook
-procura o texto em todas as listas e diz onde achou.
-
-O bot responde sempre em português, dizendo qual lista mexeu e o texto exato
-do item que encontrou. Se não encontrar nada, ele diz isso também
-(`🤔 Não achei "banana" em 🛒 Compras.`) em vez de confirmar uma mudança que
-não aconteceu.
-
-### Agenda (calendário)
-
-Agendar um evento precisa de `LLM_API_KEY`, porque entender "amanhã" ou
-"segunda que vem" de forma confiável exige IA:
-
-```text
-reunião amanhã às 14h com o time
-consulta no dentista dia 20/09 às 10h
-agendar alinhamento do time segunda que vem das 9h às 9h30
-```
-
-Cancelar um evento funciona sem IA, buscando pelo título:
-
-```text
-cancela a reunião do time
-apaga a consulta do dentista
-```
-
-Se mais de um evento futuro combinar com o título, o bot lista as opções com
-as datas e pede para você escolher, em vez de adivinhar qual apagar. A busca
-ignora acentos, então "reuniao" encontra "Reunião". Um evento recorrente conta
-uma vez só, não uma por ocorrência: cancelá-lo remove a série inteira.
-
-A agenda sempre mostra os **próximos eventos, seja qual for a data**:
-
-- no Kindle, os próximos `AGENDA_MAX_EVENTS` (cabem 6 na tela);
-- no `/listas`, os próximos cinco.
-
-`AGENDA_LOOKAHEAD_DAYS` (padrão: 365) só limita a busca no CalDAV; diminuir o
-valor esconde eventos em vez de organizar a visualização.
-
-Eventos recorrentes (principalmente aniversários anuais) são expandidos
-localmente, porque o CalDAV do Google ignora o pedido `<C:expand>` e devolve o
-evento original, com data de 1996. Eles aparecem na próxima ocorrência.
-
-## 4. Compile E Configure O Pacote Do Kindle
-
-Se quiser, coloque a imagem da caixa de foto do painel. O programa só lê PGM
-binário de 8 bits, então converta a sua foto:
+Antes de compilar, converta a foto para o formato que o Kindle lê (requer o
+[ImageMagick](https://imagemagick.org)):
 
 ```sh
 magick foto.jpg -colorspace Gray -resize 512x512^ -gravity center \
   -extent 512x512 -depth 8 kindle/kual/kindle-dashboard/assets/profile.pgm
 ```
 
-Essa pasta não entra no Git (a foto é pessoal), e a compilação não depende
-dela: sem um `profile.pgm`, a caixa aparece como uma moldura vazia.
+Depois rode o `make` acima de novo. A foto nunca vai para o Git. Sem foto, a
+caixa aparece como uma moldura vazia.
 
-Rode a verificação local antes de empacotar:
+</details>
 
-```sh
-npm run native:check
-```
+<details>
+<summary>Não consigo usar o Zig</summary>
 
-Se você tem o Zig instalado, gere um pacote ARM soft-float para o KUAL
-(passe `ZIG=/caminho/para/zig` se o `zig` não estiver no seu `PATH`):
+Com um compilador cruzado ARM próprio para Kindle, use
+`make -C kindle/native extension`. Ele espera `arm-linux-gnueabi-g++`; se o
+seu tiver outro nome, acrescente `KINDLE_CXX=/caminho/para/o/compilador`. Se o
+`zig` estiver instalado fora do `PATH`, acrescente `ZIG=/caminho/para/zig` ao
+comando com Zig.
 
-```sh
-make -C kindle/native extension-zig
-```
-
-Se você tem um compilador ARM próprio para Kindle, use:
-
-```sh
-make -C kindle/native extension
-```
-
-A compilação GNU espera `arm-linux-gnueabi-g++` por padrão. Use
-`KINDLE_CXX=/caminho/para/compilador` se o seu tiver outro nome.
-
-O pacote é gravado em:
-
-```text
-kindle/native/build/kindle-dashboard-kual.tar.gz
-```
+</details>
 
 ### Copie para o Kindle
 
-Conecte o Kindle por USB. Ele aparece como um pendrive, geralmente em:
+Conecte o Kindle ao computador pelo cabo USB. Ele aparece como um pendrive
+chamado **Kindle**. O caminho dele costuma ser:
 
 - **macOS:** `/Volumes/Kindle`
-- **Linux:** `/run/media/$USER/Kindle` ou `/media/$USER/Kindle`
+- **Linux:** `/run/media/SEU-USUARIO/Kindle` ou `/media/SEU-USUARIO/Kindle`
+  (no gerenciador de arquivos, abra o Kindle e copie o caminho da barra de
+  endereço)
 
-A raiz desse drive é o `/mnt/us` do ponto de vista do Kindle, e ela já tem uma
-pasta `extensions/` criada na instalação do KUAL.
-
-**Opção A: script de instalação.** O script faz quatro coisas:
-
-- extrai o pacote;
-- copia o inicializador;
-- cria o `config.sh` a partir das suas variáveis de ambiente;
-- baixa os dados do painel, para a primeira execução já ter o que mostrar.
+Instale, trocando o caminho pelo seu e o título pelo que quiser ver no
+cabeçalho das listas:
 
 ```sh
-DASHBOARD_DATA_URL=https://seu-projeto.insforge.app/functions/kindle-dashboard-data \
-DASHBOARD_EVENTS_URL=https://seu-projeto.function2.insforge.app/kindle-dashboard-events \
-DASHBOARD_TOGGLE_URL=https://seu-projeto.insforge.app/functions/kindle-dashboard-toggle \
-DASHBOARD_READ_TOKEN=<read-token> \
-DASHBOARD_TOGGLE_TOKEN=<toggle-token> \
-DASHBOARD_TITLE="Meu Kindle" \
-npm run native:install -- /caminho/para/Kindle
+npm run native:install -- /Volumes/Kindle --title "Casa da Ana"
 ```
 
-Se já existir um `config.sh` no aparelho, ele é mantido como está.
+O script copia a extensão, cria o arquivo de configuração do Kindle (o
+`config.sh`) com as URLs e os tokens do seu backend, e já baixa os dados atuais
+para a primeira tela. Se você rodar de novo mais tarde, o `config.sh` que já
+está no Kindle é mantido.
 
-**Opção B: manualmente.** Extraia o pacote no computador e copie a pasta
-`kindle-dashboard` resultante para `extensions/` no drive do Kindle:
+Depois, **ejete o Kindle** pelo Finder ou pelo gerenciador de arquivos e
+desconecte o cabo.
+
+✅ **Deu certo se** o script termina com `Extensao do Painel Kindle
+instalada` e não mostra `Nao foi possivel baixar os dados iniciais`.
+
+<details>
+<summary>Prefiro copiar os arquivos à mão</summary>
 
 ```sh
-tar -C /caminho/para/Kindle/extensions -xzf kindle/native/build/kindle-dashboard-kual.tar.gz
-cp /caminho/para/Kindle/extensions/kindle-dashboard/config.sh.example \
-   /caminho/para/Kindle/extensions/kindle-dashboard/config.sh
+tar -C /Volumes/Kindle/extensions -xzf kindle/native/build/kindle-dashboard-kual.tar.gz
+cp /Volumes/Kindle/extensions/kindle-dashboard/config.sh.example \
+   /Volumes/Kindle/extensions/kindle-dashboard/config.sh
 ```
 
-Depois edite `extensions/kindle-dashboard/config.sh`. Ele deve ficar assim:
+Abra `extensions/kindle-dashboard/config.sh` num editor de texto e preencha:
 
-```sh
-DASHBOARD_DATA_URL="https://seu-projeto.insforge.app/functions/kindle-dashboard-data"
-DASHBOARD_EVENTS_URL="https://seu-projeto.function2.insforge.app/kindle-dashboard-events"
-DASHBOARD_TOGGLE_URL="https://seu-projeto.insforge.app/functions/kindle-dashboard-toggle"
-DASHBOARD_READ_TOKEN="troque-pelo-seu-read-token"
-DASHBOARD_TOGGLE_TOKEN="troque-pelo-seu-toggle-token"
-DASHBOARD_TITLE="Meu Kindle"
-INTERVAL="180"
-DASHBOARD_LIVE_UPDATES="0"
-DASHBOARD_KEEP_AWAKE="1"
-DASHBOARD_SLEEP_WINDOW="off"
-DARK_MODE="0"
-```
+- `DASHBOARD_DATA_URL`: a URL do seu backend + `/functions/kindle-dashboard-data`;
+- `DASHBOARD_TOGGLE_URL`: a URL do seu backend + `/functions/kindle-dashboard-toggle`;
+- `DASHBOARD_READ_TOKEN` e `DASHBOARD_TOGGLE_TOKEN`: o campo `value` de
 
-`INTERVAL` define de quantos em quantos segundos o Kindle busca novidades
-(180 = 3 minutos). **Quanto menor o número, mais bateria o Kindle gasta.**
-Com o padrão, uma mudança feita no Telegram aparece em até 3 minutos.
+  ```sh
+  npx @insforge/cli secrets get DASHBOARD_READ_TOKEN --json
+  npx @insforge/cli secrets get DASHBOARD_TOGGLE_TOKEN --json
+  ```
 
-`DASHBOARD_LIVE_UPDATES="1"` faz as mudanças aparecerem em segundos, mas
-mantém o Kindle conectado o tempo todo e gasta bem mais bateria; é mais
-indicado para quem deixa o Kindle na tomada. A tabela completa está em
-[Bateria e frequência de atualização](CONFIGURACAO.md#bateria-e-frequência-de-atualização).
+Mantenha as aspas duplas em volta de cada valor.
 
-Pegue os tokens no InsForge e cole no `config.sh`:
+</details>
 
-```sh
-npx @insforge/cli secrets get DASHBOARD_READ_TOKEN --json
-npx @insforge/cli secrets get DASHBOARD_TOGGLE_TOKEN --json
-```
+## 6. Ligue O Painel
 
-Se for usar a atualização instantânea, use o endereço direto
-`function2.insforge.app` na URL de eventos. O gateway normal `/functions/...`
-do InsForge pode segurar as respostas SSE.
+1. No Kindle, abra o **KUAL** e toque em **Painel Kindle**.
+2. Toque em **Atualizar uma vez (claro)**. O Kindle liga o Wi-Fi, busca os
+   dados e desenha o painel.
+3. Se o painel apareceu, volte ao KUAL e toque em **Iniciar painel (claro)**
+   para deixá-lo sempre ligado.
 
-Ejete o Kindle com segurança antes de desconectar o cabo.
+✅ **Deu certo se** a tela mostra o clima, as caixas de Tarefas, Compras e
+Notas (com o `LEITE` da etapa 4) e a agenda. Embaixo do clima aparece a data e
+`AO VIVO`.
 
-## 5. Inicie No Kindle
+O que cada parte da tela faz:
 
-No Kindle, abra o KUAL. Teste primeiro **Atualizar uma vez (claro)**: se o
-painel aparecer, toda a cadeia está funcionando. Depois use **Iniciar painel**
-para deixá-lo rodando.
+- **Caixa de uma lista:** toque para abrir a lista em tela cheia.
+- **Item de uma lista aberta:** toque para marcar ou desmarcar como feito.
+  `VOLTAR` e `INICIO` levam de volta à tela principal.
+- **Cadeado:** bloqueia a tela para você poder carregar o Kindle sem apertar
+  nada sem querer. **Para desbloquear, aperte o botão liga/desliga do
+  Kindle**; nenhum toque na tela desbloqueia.
+- **`SAIR`:** fecha o painel e volta para a tela inicial do Kindle.
 
-- `Painel Kindle -> Atualizar uma vez (claro)`: busca e desenha uma
-  atualização.
-- `Painel Kindle -> Atualizar uma vez (escuro)`: o mesmo, em branco sobre
-  preto.
-- `Painel Kindle -> Iniciar painel (claro)`: inicia o ciclo de atualização
-  contínua.
-- `Painel Kindle -> Iniciar painel (escuro)`: o mesmo, em branco sobre preto.
-- `Painel Kindle -> Parar painel`: encerra o processo.
+Opções do menu **Painel Kindle** no KUAL:
 
-As opções "(escuro)" invertem o painel inteiro: fundo preto, texto e molduras
-brancos, e a caixa de foto continua aparecendo como foto. É um tema do próprio
-painel e funciona seja qual for o tema do sistema do Kindle. Coloque
-`DARK_MODE="1"` no `config.sh` para usá-lo sempre; as opções do menu têm
-prioridade na execução que iniciam.
+| Opção | O que faz |
+| --- | --- |
+| Iniciar painel (claro) | Deixa o painel sempre ligado, atualizando sozinho |
+| Iniciar painel (escuro) | O mesmo, em branco sobre preto |
+| Atualizar uma vez (claro/escuro) | Busca e desenha uma vez só; bom para testar |
+| Parar painel | Encerra o painel e devolve o descanso normal do Kindle |
 
-Dois cuidados antes de deixá-lo ligado:
+Por padrão, o Kindle busca novidades **a cada 3 minutos**. Uma mudança feita
+no Telegram leva até esse tempo para aparecer; tocar num item no próprio
+Kindle muda a tela na hora. Dá para trocar esse intervalo, ligar a atualização
+instantânea, pausar à noite ou deixar o modo escuro fixo; veja
+[Personalizando](#personalizando).
 
-- O Kindle desenha a própria barra de status nos 66 px do topo, e o painel
-  não pinta por cima dela de propósito, então uma faixa clara fica ali.
-- Uma tela quase toda preta deixa mais "fantasmas" no e-ink do que uma quase
-  toda branca.
+## 7. Primeiro Uso
 
-Arquivos úteis no Kindle:
+Mande algumas mensagens para o bot e acompanhe a tela:
 
 ```text
-/mnt/us/documents/kindle-dashboard-native.log
-/mnt/us/documents/kindle-dashboard-diagnose.log
-/mnt/us/documents/kindle-dashboard-data.json
+comprar leite e ovos
+adicionar regar as plantas nas tarefas
+anota a senha do wifi
 ```
 
-O programa usa um perfil "sempre ligado":
+Os itens aparecem **numerados**, com os mesmos números que o bot mostra em
+`/listas`. Use o número para mexer num item sem digitar o texto:
 
-- busca novidades a cada `INTERVAL` segundos (3 minutos por padrão);
-- atualização instantânea por SSE só se você ligar `DASHBOARD_LIVE_UPDATES`;
-- atualização manual pelo KUAL quando você quiser;
-- nenhum modo noturno silencioso, por padrão.
+```text
+conclua a tarefa 1
+exclua o item 2 das compras
+marca a tarefa 1 como importante
+```
 
-Para iniciar o painel junto com o Kindle, veja o `kindle/README.md`.
+Itens importantes sobem para o topo e ganham um `!`:
 
-## Atualizando Depois
+```text
+[ ] !1. REGAR AS PLANTAS
+[ ] 2. PAGAR LUZ
+```
 
-Quando baixar uma versão nova:
+Mais coisas para experimentar:
+
+- `/menu` mostra os botões; `/listas` mostra tudo; `/ajuda` mostra as frases
+  que o bot entende.
+- Toda confirmação tem um botão `↩️ Desfazer`.
+- Com a IA ligada: `reunião amanhã às 14h com o time` (com a agenda
+  configurada) e mensagens de voz.
+
+A lista completa de comandos, frases e respostas está no [BOT.md](BOT.md).
+
+## Personalizando
+
+As configurações do Kindle ficam no arquivo
+`extensions/kindle-dashboard/config.sh`, no próprio Kindle. Para mudar:
+
+1. no KUAL, toque em **Parar painel**;
+2. conecte o Kindle ao computador e abra o `config.sh` num editor de texto;
+3. mude o valor, mantendo as aspas, salve e ejete o Kindle;
+4. no KUAL, toque em **Iniciar painel**.
+
+As mais usadas:
+
+| Configuração | Padrão | O que faz |
+| --- | --- | --- |
+| `INTERVAL` | `"180"` | De quantos em quantos segundos o Kindle busca novidades. **Menor = mais rápido, mas gasta mais bateria.** |
+| `DASHBOARD_LIVE_UPDATES` | `"0"` | `"1"` mostra as mudanças em segundos, mas a bateria dura bem menos. Ideal com o Kindle na tomada. |
+| `DASHBOARD_SLEEP_WINDOW` | `"off"` | `"23:00-07:00"` pausa as atualizações à noite. |
+| `DARK_MODE` | `"0"` | `"1"` deixa o modo escuro fixo. |
+| `DASHBOARD_TITLE` | `"Painel Kindle"` (ou o seu `--title`) | O texto do cabeçalho das listas. |
+
+A referência completa, com a tabela de bateria, está no
+[CONFIGURACAO.md](CONFIGURACAO.md). Para o painel iniciar sozinho quando o
+Kindle liga, veja o [kindle/README.md](../kindle/README.md#opcional-iniciar-junto-com-o-kindle).
+
+Sobre o modo escuro: a barra de status do próprio Kindle, no topo, continua
+clara, e uma tela quase toda preta deixa mais "fantasmas" no e-ink.
+
+## Atualizando Para Uma Versão Nova
+
+Dentro da pasta `kindle-dashboard`:
 
 ```sh
 git pull
@@ -605,55 +461,92 @@ npm run kit:backend -- --skip-secrets
 make -C kindle/native extension-zig
 ```
 
-Depois substitua os arquivos da extensão instalada no Kindle, mantendo o seu
-`config.sh`.
+No Kindle, toque em **Parar painel**, conecte o cabo e reinstale (o seu
+`config.sh` é mantido):
+
+```sh
+npm run native:install -- /Volumes/Kindle
+```
+
+Ejete, abra o KUAL e toque em **Iniciar painel**.
 
 ## Solução De Problemas
 
-Comece testando o backend pelo computador. O comando deve mostrar um JSON com
-`"ok": true`:
+Na dúvida, comece por aqui. Ele diz o que está faltando no backend:
 
 ```sh
-curl -sS -H "X-Dashboard-Read-Token: <read-token>" \
-  https://seu-projeto.insforge.app/functions/kindle-dashboard-data
+npm run backend:check
 ```
 
-| Sintoma | O que verificar |
-| --- | --- |
-| O KUAL não mostra "Painel Kindle" | A pasta deve ser `extensions/kindle-dashboard/`, com o `config.xml` direto dentro dela, e não uma pasta a mais para dentro. |
-| A tela não muda depois de "Atualizar uma vez" | Abra `documents/kindle-dashboard-native.log` no drive do Kindle. `missing DASHBOARD_DATA_URL` significa que o `config.sh` não existe ou está incompleto; `missing native app` significa que o pacote não foi copiado inteiro. |
-| `OFFLINE` embaixo do cabeçalho | O Kindle está sem rede. Verifique o Wi-Fi dele. |
-| `401` no `curl` acima | O `DASHBOARD_READ_TOKEN` não bate com o segredo do backend. |
-| Clima ou agenda "indisponível" | A resposta tem `"available": false` naquele módulo: confira os segredos `WEATHER_*` ou `CALDAV_*`. O resto do painel continua funcionando. |
-| Horários dos eventos errados por algumas horas | Se você não está no horário de Brasília, configure `DASHBOARD_TIMEZONE` no backend (e no `config.sh`, se o relógio do próprio Kindle estiver errado). |
-| O bot não responde | Rode `npm run telegram:configure` de novo. O bot fica em silêncio para qualquer chat que não seja o `TELEGRAM_ALLOWED_CHAT_ID`, então confira o ID do chat. |
-| O bot diz que a cota acabou | O limite diário do plano gratuito da IA foi atingido. Os botões do menu continuam funcionando, e a cota renova no dia seguinte. |
-| As mudanças demoram minutos para aparecer | É o normal: elas aparecem em até `INTERVAL` segundos (3 minutos por padrão). Diminua o `INTERVAL` ou ligue `DASHBOARD_LIVE_UPDATES="1"`, sabendo que ambos gastam mais bateria. Com a atualização instantânea ligada, a `DASHBOARD_EVENTS_URL` precisa usar o endereço `function2.insforge.app`. |
-| Tocar nos itens não faz nada | Confira `DASHBOARD_TOGGLE_URL` e `DASHBOARD_TOGGLE_TOKEN` no `config.sh`. |
-| Travou no deploy? | O `npm run kit:backend` às vezes termina o trabalho e não devolve o terminal. Se nada aparecer por um ou dois minutos, aperte `Ctrl+C` e confira com `npx @insforge/cli functions code telegram-webhook` se a função foi publicada. |
+### Etapas 1 e 2 (computador e backend)
 
-Os logs do Kindle ficam em inglês. Se você tiver acesso SSH ao Kindle, o
-`extensions/kindle-dashboard/bin/diagnose.sh` faz uma busca e um desenho
-completos e grava um relatório detalhado em
-`documents/kindle-dashboard-diagnose.log`.
+| Sintoma | O que fazer |
+| --- | --- |
+| `command not found: npm` ou `node` | Instale o Node.js (etapa 1) e abra um terminal novo. |
+| `command not found: zig` / `Missing Zig compiler` | Instale o Zig (etapa 1), ou passe `ZIG=/caminho/para/zig` no `make`. |
+| O InsForge pede login de novo | Rode `npx @insforge/cli login`. |
+| Erro dizendo que não há projeto vinculado | Você não está na pasta `kindle-dashboard`, ou pulou o `create`. Entre na pasta com `cd` e rode de novo. |
+
+#### Travou no deploy?
+
+O `npm run kit:backend` às vezes termina o trabalho mas não devolve o
+terminal. Se nada aparecer por mais de dois minutos:
+
+1. aperte `Ctrl+C`;
+2. rode `npm run backend:check`. Se ele responder, as funções foram
+   publicadas e está tudo certo.
+3. Se não responder, rode `npm run kit:backend` de novo: ele não duplica nada.
+
+### Etapa 3 (backend:check)
+
+| Mensagem | O que fazer |
+| --- | --- |
+| `Funcao nao encontrada (404)` | As funções não foram publicadas: rode `npm run kit:backend`. |
+| `recusou o token (401)` | Rode `npm run kit:backend` de novo e, se já instalou no Kindle, confira o `DASHBOARD_READ_TOKEN` do `config.sh`. |
+| `Missing INSFORGE_BASE_URL` ou `Missing INSFORGE_API_KEY` | Rode `npm run kit:backend` de novo. Se o aviso continuar, configure as duas à mão (veja [CONFIGURACAO.md](CONFIGURACAO.md#obrigatórios)). |
+| `Clima indisponivel` | Configure `WEATHER_LAT` e `WEATHER_LON` (etapa 3). Confira se os números têm ponto, não vírgula. |
+| `Agenda indisponivel` com a agenda configurada | Confira os quatro segredos `CALDAV_*` e a senha de app. O servidor precisa ser acessível pela internet. |
+
+### Etapa 4 (Telegram)
+
+| Sintoma | O que fazer |
+| --- | --- |
+| `Nenhuma mensagem ainda` | Mande uma mensagem para o seu bot no Telegram e rode o comando de novo. |
+| `Token do bot invalido` | Copie o token do BotFather de novo, inteiro, com a parte antes dos `:`. |
+| `webhook ativo` no `telegram:chat-id` | O bot já foi ligado ao backend. Se ele responde ao `/start`, está tudo certo. |
+| O bot não responde | Rode o `telegram:configure` de novo e confira o número do chat: o bot fica em silêncio para qualquer outro chat. |
+| O bot diz que a cota acabou | O limite diário da IA gratuita acabou. Os botões continuam funcionando, e a cota renova no dia seguinte. |
+
+### Etapas 5 e 6 (Kindle)
+
+| Sintoma | O que fazer |
+| --- | --- |
+| `nao parece ser um Kindle conectado` | O caminho está errado. Confira onde o Kindle aparece no computador (etapa 5). |
+| `Pacote nao encontrado` | Rode o `make -C kindle/native extension-zig` antes. |
+| O KUAL não mostra "Painel Kindle" | A pasta deve ser `extensions/kindle-dashboard/`, com o `config.xml` direto dentro dela. Reinstale com o script. |
+| A tela não muda depois de "Atualizar uma vez" | Abra `documents/kindle-dashboard-native.log` no Kindle conectado. `missing DASHBOARD_DATA_URL` significa que falta o `config.sh`; `missing native app` significa que o pacote não foi copiado inteiro. |
+| `OFFLINE` embaixo do clima | O Kindle está sem internet. Confira o Wi-Fi dele. O painel continua mostrando os últimos dados. |
+| Horários dos eventos errados por algumas horas | Configure `DASHBOARD_TIMEZONE` no backend (etapa 3). Se o relógio do próprio Kindle estiver errado, defina também no `config.sh`. |
+| As mudanças do Telegram demoram | É o normal: até `INTERVAL` segundos (3 minutos por padrão). Veja [Personalizando](#personalizando). |
+| Os números sumiram da lista | Acontece logo depois de você tocar num item: eles voltam na próxima atualização. |
+| Tocar nos itens não faz nada | A tela pode estar bloqueada (cadeado fechado): aperte o botão liga/desliga. Se não, confira `DASHBOARD_TOGGLE_URL` e `DASHBOARD_TOGGLE_TOKEN` no `config.sh`. |
+| Quero voltar ao Kindle normal | Toque em `SAIR` na tela, ou em **Parar painel** no KUAL. |
+
+Os logs do Kindle (`documents/kindle-dashboard-*.log`) ficam em inglês. Com
+acesso SSH ao Kindle, o `extensions/kindle-dashboard/bin/diagnose.sh` grava um
+relatório completo em `documents/kindle-dashboard-diagnose.log`.
 
 ## Privacidade
 
-- Não compartilhe `INSFORGE_API_KEY`, o token do bot do Telegram, o segredo
-  do webhook, a `LLM_API_KEY` nem a senha do seu CalDAV.
-- Trate `DASHBOARD_READ_TOKEN` e `DASHBOARD_TOGGLE_TOKEN` como segredos do
-  aparelho. O token de leitura dá acesso aos dados do painel, e o de toggle
-  pode mudar o estado dos itens.
-- O Kindle lê os dados do painel pelas URLs das suas funções publicadas,
-  usando o token de leitura.
-- Com `LLM_API_KEY` configurada, as mensagens do Telegram que o interpretador
-  de regras não entende são enviadas a esse provedor de IA (por padrão, a API
-  do Gemini, do Google, um serviço de terceiros). Não ative se não quiser que
-  o texto das suas mensagens saia do seu projeto InsForge; o menu de botões
-  cobre as três listas sem IA.
-- O bot do Telegram responde a exatamente um chat e ignora todos os outros,
-  então ter um nome de usuário público não é uma exposição. Veja "Quem pode
-  usar o seu bot", acima.
-- Este kit foi feito para um único dono. Um serviço hospedado para vários
-  usuários precisaria separar cada tabela e função por usuário e parear os
-  aparelhos.
+- Nunca compartilhe o token do bot, a `LLM_API_KEY`, a senha do CalDAV nem a
+  pasta `.insforge/` (ela guarda a chave do seu backend).
+- O `config.sh` do Kindle tem dois tokens: o de leitura dá acesso às suas
+  listas, e o de toggle pode marcar itens. Não publique esse arquivo.
+- O bot responde a um único chat e ignora todos os outros, então ter um
+  usuário público no Telegram não expõe nada. Veja
+  [Quem pode usar](BOT.md#quem-pode-usar).
+- Com a IA ligada, as mensagens que o bot não entende sozinho são enviadas ao
+  provedor da IA (o Google, no padrão). Sem IA, nada sai do seu projeto
+  InsForge; o menu de botões cobre as três listas.
+- Este kit foi feito para um único dono. Um serviço para várias pessoas
+  precisaria separar os dados de cada uma.

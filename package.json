@@ -11,6 +11,7 @@
     "telegram:chat-id": "node scripts/get-telegram-chat-id.mjs",
     "telegram:configure": "node scripts/configure-telegram.mjs",
     "kit:backend": "node scripts/bootstrap-insforge-kit.mjs",
+    "backend:check": "node scripts/check-backend.mjs",
     "digest:schedule": "node scripts/schedule-daily-digest.mjs"
   },
   "devDependencies": {

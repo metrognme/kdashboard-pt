@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
+import { readLinkedProject, resolveBaseUrl } from "./insforge-project.mjs";
 
 const schemaMigrations = [
   "migrations/001_planner_items.sql",
@@ -33,9 +34,10 @@ Antes de rodar:
   npx @insforge/cli login
   npx @insforge/cli create --name kindle-dashboard --region us-east --template empty
 
-Depois, configure os segredos que nao podem ser gerados automaticamente
-(INSFORGE_BASE_URL, INSFORGE_API_KEY, DASHBOARD_TIMEZONE, WEATHER_LAT,
-WEATHER_LON, LLM_API_KEY, CALDAV_*) com:
+INSFORGE_BASE_URL e INSFORGE_API_KEY sao lidos do .insforge/project.json
+(criado pelo create/link). Depois, configure os segredos que so voce sabe
+(WEATHER_LAT, WEATHER_LON e, se quiser, DASHBOARD_TIMEZONE, LLM_API_KEY,
+CALDAV_*) com:
   npx @insforge/cli secrets add <CHAVE> <VALOR>
 Veja docs/CONFIGURACAO.md.
 `);
@@ -52,6 +54,13 @@ for (const migration of schemaMigrations) {
 
 if (!skipSecrets) {
   console.log("Garantindo que os segredos gerados existem...");
+  const project = readLinkedProject();
+  if (project?.oss_host && project?.api_key) {
+    ensureSecret("INSFORGE_BASE_URL", resolveBaseUrl(project.oss_host));
+    ensureSecret("INSFORGE_API_KEY", project.api_key);
+  } else {
+    console.log("- .insforge/project.json sem oss_host/api_key: configure INSFORGE_BASE_URL e INSFORGE_API_KEY manualmente");
+  }
   ensureSecret("TELEGRAM_WEBHOOK_SECRET", randomSecret());
   ensureSecret("DASHBOARD_READ_TOKEN", randomSecret());
   ensureSecret("DASHBOARD_TOGGLE_TOKEN", randomSecret());
@@ -65,9 +74,14 @@ if (!skipDeploy) {
   }
 }
 
+const baseUrl = resolveBaseUrl();
+console.log("");
 console.log("Backend pronto.");
-console.log("Proximo passo: conecte o Telegram com npm run telegram:configure e depois copie as URLs para o config.sh do Kindle.");
-console.log("Depois: npm run digest:schedule -- --base-url <sua INSFORGE_BASE_URL> para ativar o resumo diario.");
+if (baseUrl) console.log(`URL do seu backend: ${baseUrl}`);
+console.log("Proximos passos (docs/INSTALACAO.md):");
+console.log("  1. Clima: npx @insforge/cli secrets add WEATHER_LAT <latitude> (e WEATHER_LON)");
+console.log("  2. Telegram: npm run telegram:chat-id e npm run telegram:configure");
+console.log("  3. Resumo diario: npm run digest:schedule");
 
 function applyMigration(path) {
   console.log(`- ${path}`);

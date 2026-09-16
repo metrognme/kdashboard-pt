@@ -78,15 +78,20 @@ Extraia `kindle/native/build/kindle-dashboard-kual.tar.gz` na pasta
 tar -C /caminho/para/Kindle/extensions -xzf kindle/native/build/kindle-dashboard-kual.tar.gz
 ```
 
-Ou instale direto com o script. O caminho padrão é `/Volumes/Kindle` (macOS),
-então passe o caminho explicitamente no Linux:
+Ou instale direto com o script, de dentro da pasta vinculada ao InsForge. O
+caminho padrão é `/Volumes/Kindle` (macOS), então passe o caminho
+explicitamente no Linux:
 
 ```sh
-DASHBOARD_DATA_URL=https://seu-projeto.insforge.app/functions/kindle-dashboard-data DASHBOARD_READ_TOKEN=<read-token> npm run native:install -- /caminho/para/Kindle
+npm run native:install -- /caminho/para/Kindle [--title "Meu Kindle"] [--base-url <url>] [--force]
 ```
 
-Veja o [docs/INSTALACAO.md](../docs/INSTALACAO.md) para a lista completa de
-variáveis que ele grava no `config.sh`.
+Na primeira instalação, o script cria o `config.sh` com as URLs derivadas da
+URL do backend e com os tokens lidos dos segredos do InsForge. Variáveis de
+ambiente (`DASHBOARD_DATA_URL`, `DASHBOARD_EVENTS_URL`, `DASHBOARD_TOGGLE_URL`,
+`DASHBOARD_READ_TOKEN`, `DASHBOARD_TOGGLE_TOKEN`, `DASHBOARD_TITLE`) têm
+prioridade. Um `config.sh` que já existe no aparelho nunca é alterado.
+`--force` só pula a checagem de que o caminho parece um Kindle.
 
 Opções do menu do KUAL (em **Painel Kindle**):
 

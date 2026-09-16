@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { resolveBaseUrl } from "./insforge-project.mjs";
 
 // One-time setup for the daily digest's automatic side: an hourly cron that
 // posts to telegram-webhook, which decides on its own whether the current
@@ -13,9 +14,10 @@ for (let index = 2; index < process.argv.length; index += 2) {
   args.set(process.argv[index], process.argv[index + 1]);
 }
 
-const baseUrl = (args.get("--base-url") || process.env.INSFORGE_BASE_URL || "").replace(/\/+$/, "");
+const baseUrl = resolveBaseUrl(args.get("--base-url"));
 if (!baseUrl) {
-  console.error("Uso: npm run digest:schedule -- --base-url https://seu-projeto.regiao.insforge.app");
+  console.error("Uso: npm run digest:schedule -- [--base-url https://seu-projeto.us-east.insforge.app]");
+  console.error("Sem --base-url, a URL vem do .insforge/project.json (rode dentro da pasta vinculada).");
   process.exit(1);
 }
 

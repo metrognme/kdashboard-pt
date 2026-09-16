@@ -1,15 +1,27 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
+import { parseArgs, readSecret, resolveBaseUrl } from "./insforge-project.mjs";
 
-const force = process.argv.includes("--force");
-const volumeArg = process.argv.slice(2).find((arg) => arg !== "--force");
-const dataUrl = process.env.DASHBOARD_DATA_URL || "";
+const { flags, values, positional } = parseArgs(process.argv.slice(2), ["--force"]);
+const force = flags.has("--force");
+const volumeArg = positional[0];
+// Everything can be given explicitly (env vars, as before); whatever is missing is
+// derived from the linked InsForge project, so a first install needs only the path.
+const existingConfigPath = path.join(path.resolve(volumeArg || "/Volumes/Kindle"), "extensions", "kindle-dashboard", "config.sh");
+const needsConfig = !existsSync(existingConfigPath);
+const baseUrl = resolveBaseUrl(values.get("--base-url"));
+const dataUrl = process.env.DASHBOARD_DATA_URL || (baseUrl ? `${baseUrl}/functions/kindle-dashboard-data` : "");
 const eventsUrl = process.env.DASHBOARD_EVENTS_URL || "";
-const toggleUrl = process.env.DASHBOARD_TOGGLE_URL || "";
-const readToken = process.env.DASHBOARD_READ_TOKEN || "";
-const toggleToken = process.env.DASHBOARD_TOGGLE_TOKEN || "";
-const title = process.env.DASHBOARD_TITLE || "Painel Kindle";
+const toggleUrl = process.env.DASHBOARD_TOGGLE_URL || (baseUrl ? `${baseUrl}/functions/kindle-dashboard-toggle` : "");
+// An existing config.sh is kept as is, and its own URL/token are the right ones to
+// prefill the offline cache with.
+const existingValues = needsConfig ? {} : readShellValues(readFileSync(existingConfigPath, "utf8"));
+const cacheUrl = existingValues.DASHBOARD_DATA_URL || process.env.DASHBOARD_DATA_URL || (baseUrl ? `${baseUrl}/functions/kindle-dashboard-data` : "");
+const readToken =
+  process.env.DASHBOARD_READ_TOKEN || existingValues.DASHBOARD_READ_TOKEN || (baseUrl ? readSecret("DASHBOARD_READ_TOKEN") : "");
+const toggleToken = process.env.DASHBOARD_TOGGLE_TOKEN || (needsConfig && baseUrl ? readSecret("DASHBOARD_TOGGLE_TOKEN") : "");
+const title = values.get("--title") || process.env.DASHBOARD_TITLE || "Painel Kindle";
 const archive = path.resolve("kindle/native/build/kindle-dashboard-kual.tar.gz");
 const volume = path.resolve(volumeArg || "/Volumes/Kindle");
 const extensionsDir = path.join(volume, "extensions");
@@ -28,6 +40,17 @@ if (!existsSync(archive)) {
 
 if (!existsSync(volume)) {
   console.error(`Kindle nao encontrado em: ${volume}`);
+  process.exit(1);
+}
+
+if (!volumeArg) {
+  console.log(`Nenhum caminho informado; usando ${volume}.`);
+}
+
+if (needsConfig && (!dataUrl || !readToken)) {
+  console.error("Faltam dados para criar o config.sh do Kindle:");
+  if (!dataUrl) console.error("- a URL do backend (rode dentro da pasta vinculada ao InsForge, ou passe --base-url <url>)");
+  if (!readToken) console.error("- o DASHBOARD_READ_TOKEN (rode npm run kit:backend antes, com o login do InsForge feito)");
   process.exit(1);
 }
 
@@ -62,7 +85,7 @@ rmSync(path.join(documentsDir, "._kindle-dashboard-launch.sh"), { force: true })
 if (existingConfig) {
   writeFileSync(targetConfig, existingConfig);
   console.log(`config.sh existente mantido em ${targetConfig}`);
-} else if (dataUrl || eventsUrl || toggleUrl) {
+} else {
   writeFileSync(
     targetConfig,
     [
@@ -84,9 +107,9 @@ if (existingConfig) {
   console.log(`config.sh criado em ${targetConfig}`);
 }
 
-if (dataUrl) {
+if (cacheUrl) {
   try {
-    const response = await fetch(dataUrl, {
+    const response = await fetch(cacheUrl, {
       headers: readToken ? { "X-Dashboard-Read-Token": readToken } : undefined
     });
     if (!response.ok) {
@@ -137,17 +160,26 @@ writeFileSync(
     "  /mnt/us/documents/kindle-dashboard-data.json",
     "",
     "URL de dados:",
-    dataUrl ? `  ${dataUrl}` : "  nao definida; defina DASHBOARD_DATA_URL antes de instalar para baixar os dados iniciais",
+    cacheUrl ? `  ${cacheUrl}` : "  nao definida; defina DASHBOARD_DATA_URL antes de instalar para baixar os dados iniciais",
     ""
   ].join("\n")
 );
 
 execFileSync("sync", [], { stdio: "inherit" });
 console.log(`Extensao do Painel Kindle instalada em ${targetDir}`);
+console.log("Agora ejete o Kindle com seguranca, desconecte o cabo e abra KUAL -> Painel Kindle -> Atualizar uma vez (claro).");
 
 function isLikelyKindleVolume(volumePath) {
   const name = path.basename(volumePath).toLowerCase();
   return name.includes("kindle") || existsSync(path.join(volumePath, "documents"));
+}
+
+function readShellValues(text) {
+  const result = {};
+  for (const match of text.matchAll(/^\s*([A-Z_]+)="((?:[^"\\]|\\.)*)"/gm)) {
+    result[match[1]] = match[2].replace(/\\(.)/g, "$1");
+  }
+  return result;
 }
 
 function shellDoubleQuote(value) {

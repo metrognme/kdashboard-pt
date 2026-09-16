@@ -61,15 +61,27 @@ Duas coisas a saber antes de usar um grupo:
    qualquer outra pessoa fez. Não existe separação por pessoa em nenhuma
    parte do banco.
 
-Para mover o bot para outro chat, rode o script de configuração de novo com o
-novo ID; ele atualiza o segredo salvo:
+Para mover o bot para um grupo (ou outro chat):
 
-```sh
-npm run telegram:configure -- \
-  --bot-token 123456789:token-do-bot \
-  --chat-id -1001234567890 \
-  --webhook-url https://seu-projeto.insforge.app/functions/telegram-webhook
-```
+1. Adicione o bot ao grupo e desative o modo de privacidade (item 1 acima).
+2. Desligue o webhook por um momento, porque o Telegram só mostra o ID de um
+   chat novo enquanto o bot não está ligado ao backend:
+
+   ```sh
+   npm run telegram:chat-id -- --bot-token 123456789:token-do-bot --delete-webhook
+   ```
+
+3. Mande qualquer mensagem no grupo e rode o mesmo comando **sem**
+   `--delete-webhook`. O ID do grupo é o número negativo da linha com
+   `type=group` (ou `supergroup`).
+4. Ligue o bot de novo, já com o ID do grupo. O script atualiza o segredo
+   salvo e registra o webhook outra vez:
+
+   ```sh
+   npm run telegram:configure -- --bot-token 123456789:token-do-bot --chat-id -1001234567890
+   ```
+
+Entre os passos 2 e 4, o bot não responde.
 
 ### Se você acha que o bot foi comprometido
 
@@ -183,8 +195,9 @@ serve para isso, porque também muda quando um item troca de lista.
 Configuração, uma vez por backend:
 
 1. `npm run kit:backend` aplica a migration e gera o `DAILY_DIGEST_TOKEN`.
-2. `npm run digest:schedule -- --base-url <INSFORGE_BASE_URL>` cria o
-   agendamento de hora em hora.
+2. `npm run digest:schedule` cria o agendamento de hora em hora (a URL vem
+   do `.insforge/project.json`; fora da pasta vinculada, passe
+   `-- --base-url <INSFORGE_BASE_URL>`).
 
 ---
 
@@ -259,6 +272,24 @@ como concluir e apagar, e as duas podem ser desfeitas. Não dá para marcar a
 importância no mesmo gesto de adicionar: marque depois, na mesma mensagem ou
 numa seguinte.
 
+### Agenda
+
+- **Agendar** precisa de `LLM_API_KEY`, porque entender "amanhã" ou "segunda
+  que vem" de forma confiável exige IA. **Cancelar** funciona sem IA,
+  buscando pelo título ou pelo número do `/listas`.
+- A busca pelo título ignora acentos ("reuniao" encontra "Reunião"). Se mais
+  de um evento futuro combinar, o bot lista as opções com as datas em vez de
+  adivinhar.
+- Um evento recorrente conta uma vez só: cancelá-lo remove a série inteira.
+- A agenda sempre mostra os **próximos eventos, seja qual for a data**: no
+  Kindle, os próximos `AGENDA_MAX_EVENTS` (cabem 6 na tela); no `/listas`, os
+  próximos cinco. `AGENDA_LOOKAHEAD_DAYS` (padrão: 365) só limita a busca no
+  CalDAV; diminuir o valor esconde eventos.
+- Eventos recorrentes (como aniversários anuais) são expandidos pelo próprio
+  bot, porque o CalDAV do Google ignora o pedido `<C:expand>` e devolve o
+  evento original, com a data de quando foi criado. Eles aparecem na próxima
+  ocorrência.
+
 **Mensagens de voz:**
 
 - **Como usar:** segure para gravar e fale.
@@ -267,6 +298,10 @@ numa seguinte.
 - **Limites:** 5 minutos e 5 MB.
 - **Requisito:** uma `LLM_API_KEY` do Gemini. Com outro provedor, o bot avisa
   que o áudio está indisponível, e todo o resto continua funcionando.
+- **Por que só Gemini:** o áudio vai para o endpoint nativo do Gemini, porque
+  a camada compatível com OpenAI só aceita `wav` e `mp3`, e o Telegram manda
+  OGG/Opus. O endereço é derivado de `LLM_BASE_URL`; defina
+  `LLM_AUDIO_BASE_URL` para sobrescrever.
 
 ---
 
