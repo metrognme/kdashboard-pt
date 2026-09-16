@@ -319,6 +319,28 @@ Listas aceitas (os apelidos valem em português e inglês, com ou sem acento):
 As três aparecem na tela do Kindle, cada uma na sua caixa, e as três podem ser
 tocadas para abrir em tela cheia.
 
+Os itens aparecem **numerados**, com os mesmos números do `/listas`, e os
+**importantes** vêm primeiro, marcados com `!`:
+
+```text
+[ ] !1. PAGAR LUZ
+[ ] 2. REGAR HORTA
+[X] 3. LAVAR LOUCA
+```
+
+Use esses números nos comandos:
+
+```text
+exclua o item 2 da lista de tarefas
+conclua a tarefa 1
+mude o texto do item 2 das compras para leite integral
+marca a tarefa 2 como importante
+tira a importância da tarefa 1
+```
+
+Nas caixas pequenas da tela principal, textos longos aparecem cortados; abra a
+lista (toque na caixa) para ver o texto inteiro.
+
 Adicionar itens:
 
 ```text

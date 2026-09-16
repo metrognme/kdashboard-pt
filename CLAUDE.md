@@ -221,6 +221,15 @@ Estes são os que quebram em silêncio se você esquecer:
     de lista hoje"; o `updated_at` não serve para isso.
   - Vale para o `kindle-dashboard-toggle.ts` e para os caminhos de concluir e
     reabrir do webhook.
+- **Os números dos itens no Kindle precisam bater com os do `/listas`.**
+  - O `orderForNumbering` está duplicado, idêntico, em
+    `kindle-dashboard-data.ts` e `telegram-webhook.ts`, e os dois consultam
+    ordenando por `created_at` crescente.
+  - O `kindle-dashboard-data.ts` numera todas as linhas **antes** de esconder
+    as concluídas antigas (`shouldShowPlannerItem`) e envia `number` e
+    `important` por item.
+  - Mudar a ordem num lado sem mudar no outro faz "exclua o item 2" apagar a
+    linha errada.
 - **Horários saem com deslocamento explícito, nunca com `Z`.** O programa não
   tem tabelas de fuso e imprime os dígitos como vieram. Eventos de dia inteiro
   ficam só com a data.

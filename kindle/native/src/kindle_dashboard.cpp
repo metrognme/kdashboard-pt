@@ -96,6 +96,10 @@ struct Item {
   char id[48];
   char text[96];
   int done;
+  int important;
+  // Position as numbered by the backend (same as /listas in the bot); 0 when an older
+  // backend did not send one.
+  int number;
 };
 
 struct List {
@@ -365,6 +369,21 @@ const char* matchingClose(const char* open, char close_char) {
   return NULL;
 }
 
+void upperCopy(char* dest, size_t size, const char* source);
+
+// "[ ] 3. LEITE" / "[X] !1. PAO" - the same "!N." the bot prints in /listas, so a
+// user can read a number off the Kindle and say "exclua o item 3 das compras".
+void formatItemRow(const Item* item, char* out, size_t size, int max_text) {
+  char item_text[96];
+  upperCopy(item_text, sizeof(item_text), item->text);
+  const char* box = item->done ? "[X]" : "[ ]";
+  if (item->number > 0) {
+    snprintf(out, size, "%s %s%d. %.*s", box, item->important ? "!" : "", item->number, max_text, item_text);
+  } else {
+    snprintf(out, size, "%s %s%.*s", box, item->important ? "!" : "", max_text, item_text);
+  }
+}
+
 int parseItems(const char* list_start, const char* list_end, List* list) {
   const char* items_value = findKeyInRange(list_start, list_end, "items");
   if (!items_value || *items_value != '[') return 0;
@@ -382,6 +401,8 @@ int parseItems(const char* list_start, const char* list_end, List* list) {
     extractString(object_start, object_end, "id", item->id, sizeof(item->id), "");
     extractString(object_start, object_end, "text", item->text, sizeof(item->text), "");
     item->done = extractBool(object_start, object_end, "done", 0);
+    item->important = extractBool(object_start, object_end, "important", 0);
+    item->number = extractInt(object_start, object_end, "number", 0);
     if (item->text[0]) list->item_count++;
     cursor = object_end + 1;
   }
@@ -645,7 +666,9 @@ void addList(char lines[][96], int* count, const List* list) {
   const int shown = list->item_count > 4 ? 4 : list->item_count;
   for (int i = 0; i < shown; i++) {
     char line[96];
-    snprintf(line, sizeof(line), " %s %.30s", list->items[i].done ? "[x]" : "[ ]", list->items[i].text);
+    char row[64];
+    formatItemRow(&list->items[i], row, sizeof(row), 30);
+    snprintf(line, sizeof(line), " %s", row);
     addCardText(lines, count, line);
   }
   if (list->item_count > shown) {
@@ -1330,9 +1353,7 @@ void drawListCard(Canvas* canvas, int x, int y, int w, int h, const List* list, 
     hudRail(canvas, x + 10, x + w - 10, y + 52, 0);
     if (list->item_count > 0) {
       char row[128];
-      char item_text[96];
-      upperCopy(item_text, sizeof(item_text), list->items[0].text);
-      snprintf(row, sizeof(row), "%s %.52s", list->items[0].done ? "[X]" : "[ ]", item_text);
+      formatItemRow(&list->items[0], row, sizeof(row), 52);
       drawTextClipped(canvas, x + 18, y + 66, w - 36, row, 2, 0);
     } else {
       drawTextCentered(canvas, x + w / 2, y + 66, w - 36, "LISTA VAZIA", 2, 0);
@@ -1351,9 +1372,7 @@ void drawListCard(Canvas* canvas, int x, int y, int w, int h, const List* list, 
   const int shown = list->item_count > row_capacity ? row_capacity : list->item_count;
   for (int i = 0; i < shown; i++) {
     char row[128];
-    char item_text[96];
-    upperCopy(item_text, sizeof(item_text), list->items[i].text);
-    snprintf(row, sizeof(row), "%s %.52s", list->items[i].done ? "[X]" : "[ ]", item_text);
+    formatItemRow(&list->items[i], row, sizeof(row), 52);
     drawTextClipped(canvas, x + 18, y + 74 + i * 42, w - 36, row, 3, 0);
   }
   if (list->item_count > shown && h >= 190) {
@@ -1441,9 +1460,7 @@ void drawFullListDashboard(Canvas* canvas, const Dashboard* dashboard, int list_
     fillRect(canvas, row_rect.x, row_rect.y, 7, row_rect.h, 0);
     addTouchRegion(row_rect, kTouchToggleItem, list_index, i, list->items[i].id, list->items[i].done);
     char row[160];
-    char item_text[96];
-    upperCopy(item_text, sizeof(item_text), list->items[i].text);
-    snprintf(row, sizeof(row), "%s %.46s", list->items[i].done ? "[X]" : "[ ]", item_text);
+    formatItemRow(&list->items[i], row, sizeof(row), 46);
     drawTextClipped(canvas, row_x + 18, row_y + 20, row_w - 36, row, 3, 0);
   }
 }

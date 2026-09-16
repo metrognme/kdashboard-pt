@@ -232,6 +232,11 @@ ordem é:
 
 (A regra está em `orderForNumbering`, no `telegram-webhook.ts`.)
 
+**O Kindle mostra os mesmos números e a mesma ordem** (`[ ] !1. PAGAR LUZ`),
+então dá para ler o número direto na tela e mandar "exclua o item 2 das
+compras". Itens concluídos há mais de 24 h somem do Kindle, mas os números dos
+outros não mudam por isso.
+
 Use o número em vez de digitar o texto de novo: `conclua a tarefa 3`,
 `exclua o item 2 da lista de compras`, `cancela o evento 1`. Um número sempre
 aponta para exatamente um item, então, ao contrário de um trecho de texto,

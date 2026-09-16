@@ -444,19 +444,33 @@ Exemplo de resposta:
     ]
   },
   "lists": [
-    { "key": "todo",    "title": "Tarefas", "items": [{ "id": "item-1", "text": "LIMPAR A MESA", "done": false }] },
-    { "key": "grocery", "title": "Compras", "items": [{ "id": "item-2", "text": "LEITE", "done": false }] },
-    { "key": "notes",   "title": "Notas",   "items": [{ "id": "item-3", "text": "SENHA DO WIFI NO ROTEADOR", "done": false }] }
+    { "key": "todo",    "title": "Tarefas", "items": [
+      { "id": "item-4", "number": 1, "text": "PAGAR LUZ", "done": false, "important": true },
+      { "id": "item-1", "number": 2, "text": "LIMPAR A MESA", "done": false, "important": false }
+    ] },
+    { "key": "grocery", "title": "Compras", "items": [{ "id": "item-2", "number": 1, "text": "LEITE", "done": false, "important": false }] },
+    { "key": "notes",   "title": "Notas",   "items": [{ "id": "item-3", "number": 1, "text": "SENHA DO WIFI NO ROTEADOR", "done": false, "important": false }] }
   ],
   "version": "a13f9c"
 }
 ```
 
-Dois detalhes do contrato de que o programa do Kindle depende:
+Três detalhes do contrato de que o programa do Kindle depende:
 
 - **Ordem das listas:** `lists` sai sempre na ordem fixa `todo`, `grocery`,
   `notes`. O programa associa a posição na lista direto a uma caixa na tela,
   então o backend não pode reordenar.
+- **Ordem e números dos itens:** dentro de cada lista, os itens saem na mesma
+  ordem e com os mesmos números (`number`) que o `/listas` do bot usa:
+  - abertos antes de concluídos;
+  - importantes primeiro dentro de cada grupo;
+  - mais antigos primeiro dentro disso.
+
+  A função `orderForNumbering` existe em cópias idênticas no
+  `kindle-dashboard-data.ts` e no `telegram-webhook.ts`. Os números são
+  calculados sobre todas as linhas antes de esconder os itens concluídos há
+  mais de 24 h, então esconder um item nunca muda o número de outro. O
+  programa só imprime o `number` que recebe (`[ ] !1. PAGAR LUZ`).
 - **Horários dos eventos:** eventos com horário são convertidos para o
   horário local do painel com o deslocamento explícito (`-03:00` acima), e
   não em UTC com `Z`. O programa não tem tabelas de fuso e imprime os dígitos

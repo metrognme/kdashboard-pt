@@ -513,6 +513,8 @@ async function buildListsOverview(admin: any): Promise<string> {
   return blocks.join("\n\n");
 }
 
+// Mirrored in kindle-dashboard-data.ts so the Kindle shows the same numbers;
+// change both together.
 // Open-and-important first, then open, then done-and-important, then done —
 // numbers below are assigned over this exact order so "conclua a tarefa 3"
 // always resolves to the row a user just read as "3." in /listas. Relies on

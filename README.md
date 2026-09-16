@@ -26,6 +26,10 @@ imagem que quiser.</sub>
   recorrentes.
 - **Três listas**: tarefas, compras e notas. Toque numa caixa para abrir a
   lista em tela cheia e toque num item para marcar como feito.
+  - Os itens são **numerados**, com os mesmos números do bot: leia na tela e
+    mande "exclua o item 2 das compras".
+  - Itens **importantes** (`marca a tarefa 3 como importante`) sobem para o
+    topo da lista e aparecem com `!`.
 - **Um bot do Telegram** que edita tudo isso:
   - menu de botões que sempre funciona;
   - texto livre e áudio, se você adicionar uma chave de IA (opcional, com

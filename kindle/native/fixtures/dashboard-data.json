@@ -74,15 +74,27 @@
       "title": "Tarefas",
       "items": [
         {
-          "id": "1",
-          "text": "REGAR PLANTAS",
+          "id": "6",
+          "number": 1,
+          "text": "PAGAR LUZ",
           "done": false,
+          "important": true,
+          "updated_at": "2026-09-11T08:20:00.000Z"
+        },
+        {
+          "id": "1",
+          "number": 2,
+          "text": "REGAR HORTA",
+          "done": false,
+          "important": false,
           "updated_at": "2026-09-11T08:00:00.000Z"
         },
         {
           "id": "2",
+          "number": 3,
           "text": "LAVAR LOUCA",
           "done": true,
+          "important": false,
           "updated_at": "2026-09-11T07:00:00.000Z"
         }
       ]
@@ -93,14 +105,18 @@
       "items": [
         {
           "id": "3",
+          "number": 1,
           "text": "LEITE",
           "done": false,
+          "important": false,
           "updated_at": "2026-09-11T08:10:00.000Z"
         },
         {
           "id": "4",
+          "number": 2,
           "text": "OVOS",
           "done": false,
+          "important": false,
           "updated_at": "2026-09-11T08:11:00.000Z"
         }
       ]
@@ -111,8 +127,10 @@
       "items": [
         {
           "id": "5",
-          "text": "LIGAR P/ MAE",
+          "number": 1,
+          "text": "LIGAR MAE",
           "done": false,
+          "important": false,
           "updated_at": "2026-09-11T08:12:00.000Z"
         }
       ]

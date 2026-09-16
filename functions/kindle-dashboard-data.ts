@@ -7,6 +7,7 @@ type PlannerItem = {
   list_key: ListKey;
   text: string;
   done: boolean;
+  important: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -107,9 +108,9 @@ async function loadDashboardPayload(): Promise<DashboardPayload> {
   const [itemsResult, weather, agenda] = await Promise.all([
     admin.database
       .from("planner_items")
-      .select("id,list_key,text,done,created_at,updated_at")
+      .select("id,list_key,text,done,important,created_at,updated_at")
       .in("list_key", ["todo", "grocery", "notes"])
-      .order("created_at", { ascending: false }),
+      .order("created_at", { ascending: true }),
     fetchWeather(Deno.env.get("WEATHER_LAT"), Deno.env.get("WEATHER_LON")),
     fetchAgenda(
       Deno.env.get("CALDAV_BASE_URL"),
@@ -125,7 +126,7 @@ async function loadDashboardPayload(): Promise<DashboardPayload> {
   if (itemsError) throw itemsError;
 
   const staleCompletedCutoff = Date.now() - COMPLETED_ITEM_HIDE_AFTER_MS;
-  const plannerItems = (items as PlannerItem[]).filter((item) => shouldShowPlannerItem(item, staleCompletedCutoff));
+  const plannerItems = items as PlannerItem[];
 
   const payloadWithoutVersion = {
     ok: true as const,
@@ -148,13 +149,19 @@ async function loadDashboardPayload(): Promise<DashboardPayload> {
     lists: (["todo", "grocery", "notes"] as const).map((key) => ({
       key,
       title: LIST_TITLES[key],
-      items: plannerItems
-        .filter((item) => item.list_key === key)
-        .sort((a, b) => b.created_at.localeCompare(a.created_at))
-        .map((item) => ({
+      // Same order and numbers as /listas in telegram-webhook.ts, so "exclua o
+      // item 2 das compras" means the row the Kindle shows as "2.". Numbers are
+      // assigned over every row, like the bot does, before stale done rows are
+      // hidden, so hiding them never shifts anyone else's number.
+      items: orderForNumbering(plannerItems.filter((item) => item.list_key === key))
+        .map((item, index) => ({ item, number: index + 1 }))
+        .filter(({ item }) => shouldShowPlannerItem(item, staleCompletedCutoff))
+        .map(({ item, number }) => ({
           id: item.id,
+          number,
           text: asciiFoldUpper(item.text),
           done: item.done,
+          important: Boolean(item.important),
           updated_at: item.updated_at
         }))
     }))
@@ -749,6 +756,22 @@ function zonedIsoString(date: Date, timeZone: string): string {
 function asciiFoldUpper(text: string): string {
   const folded = text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
   return folded.toUpperCase().replace(/[^A-Z0-9 /:\-_.,%[\]+|!#]/g, "?");
+}
+
+// Copy of orderForNumbering in telegram-webhook.ts (functions share no modules);
+// the two must stay identical or the Kindle's numbers stop matching the bot's.
+// Open before done, important first within each; the stable sort keeps the
+// created_at-ascending order of the query inside each group.
+function orderForNumbering<T extends { done?: boolean; important?: boolean }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => {
+    const aDone = Boolean(a.done);
+    const bDone = Boolean(b.done);
+    if (aDone !== bDone) return aDone ? 1 : -1;
+    const aImportant = Boolean(a.important);
+    const bImportant = Boolean(b.important);
+    if (aImportant !== bImportant) return aImportant ? -1 : 1;
+    return 0;
+  });
 }
 
 function shouldShowPlannerItem(item: PlannerItem, staleCompletedCutoff: number): boolean {

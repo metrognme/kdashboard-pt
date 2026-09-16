@@ -9,6 +9,7 @@ type PlannerItem = {
   list_key: ListKey;
   text: string;
   done: boolean;
+  important: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -121,7 +122,7 @@ async function loadDashboardData(): Promise<DashboardData> {
 
   const { data: items, error: itemsError } = await admin.database
     .from("planner_items")
-    .select("id,list_key,text,done,created_at,updated_at")
+    .select("id,list_key,text,done,important,created_at,updated_at")
     .in("list_key", ["todo", "grocery", "notes"])
     .order("created_at", { ascending: false });
   if (itemsError) throw itemsError;
