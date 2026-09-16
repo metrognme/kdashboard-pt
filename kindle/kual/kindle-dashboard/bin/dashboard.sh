@@ -12,7 +12,11 @@ CACHE="${CACHE:-/mnt/us/documents/kindle-dashboard-data.json}"
 LOG="${LOG:-/mnt/us/documents/kindle-dashboard-native.log}"
 PIDFILE="${PIDFILE:-/mnt/us/documents/kindle-dashboard-native.pid}"
 SAVE_PGM="${SAVE_PGM:-/mnt/us/documents/kindle-dashboard-last-render.pgm}"
-INTERVAL="${INTERVAL:-300}"
+INTERVAL="${INTERVAL:-180}"
+# Live updates (SSE) hold a connection open, which keeps Wi-Fi from ever idling,
+# so they are opt-in. Off: the Kindle only checks the backend every INTERVAL.
+DASHBOARD_LIVE_UPDATES="${DASHBOARD_LIVE_UPDATES:-0}"
+[ "$DASHBOARD_LIVE_UPDATES" = "1" ] || DASHBOARD_EVENTS_URL=""
 DASHBOARD_KEEP_AWAKE="${DASHBOARD_KEEP_AWAKE:-1}"
 DASHBOARD_SLEEP_WINDOW="${DASHBOARD_SLEEP_WINDOW:-off}"
 DASHBOARD_TITLE="${DASHBOARD_TITLE:-Painel Kindle}"
@@ -106,7 +110,7 @@ start_dashboard() {
     allow_sleep
   fi
   enable_wifi
-  log "starting native dashboard interval=$INTERVAL keep_awake=$DASHBOARD_KEEP_AWAKE sleep_window=$DASHBOARD_SLEEP_WINDOW timezone=${TZ:-kindle-local}"
+  log "starting native dashboard interval=$INTERVAL live_updates=$DASHBOARD_LIVE_UPDATES keep_awake=$DASHBOARD_KEEP_AWAKE sleep_window=$DASHBOARD_SLEEP_WINDOW timezone=${TZ:-kindle-local}"
   dark_mode_theme_args
   save_args=""
   [ -n "$SAVE_PGM" ] && save_args="--save-pgm $SAVE_PGM"

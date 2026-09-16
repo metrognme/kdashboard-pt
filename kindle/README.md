@@ -132,12 +132,19 @@ Sem Wi-Fi, ele desenha os dados guardados, com `OFFLINE` na linha de status.
 Os padrões "sempre ligado" podem ser alterados no `config.sh`:
 
 ```sh
-INTERVAL=300
+INTERVAL=180
+DASHBOARD_LIVE_UPDATES=0
 DASHBOARD_SLEEP_WINDOW=off
 DASHBOARD_KEEP_AWAKE=1
 DARK_MODE=0
 DASHBOARD_TITLE="Painel Kindle"
 ```
+
+`INTERVAL` é de quantos em quantos segundos o Kindle busca novidades
+(padrão 180 = 3 minutos): quanto menor, mais bateria gasta.
+`DASHBOARD_LIVE_UPDATES=1` liga a atualização instantânea por SSE, que gasta
+bem mais bateria. Veja a tabela em
+[docs/CONFIGURACAO.md](../docs/CONFIGURACAO.md#bateria-e-frequência-de-atualização).
 
 Use `DASHBOARD_SLEEP_WINDOW=HH:MM-HH:MM` para pausar as atualizações à noite,
 ou `DASHBOARD_KEEP_AWAKE=0` para deixar o Kindle dormir normalmente enquanto o
@@ -199,8 +206,9 @@ mntroot ro
 - O suporte ao KUAL varia conforme o modelo e o firmware do Kindle.
 - O programa precisa de Wi-Fi para dados novos, mas desenha os dados
   guardados quando está offline.
-- O perfil padrão mantém o Kindle acordado, atualiza a cada 300 segundos
-  (além dos avisos ao vivo por SSE) e não usa janela noturna.
+- O perfil padrão mantém o Kindle acordado, busca novidades a cada 180
+  segundos, deixa a atualização instantânea (SSE) desligada e não usa janela
+  noturna.
 - Manter o Wi-Fi e o processo de atualização ligados gasta mais bateria do
   que um painel estático no estilo protetor de tela.
 - Se iniciar junto com o Kindle for agressivo demais, inicie o painel

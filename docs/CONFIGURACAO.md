@@ -101,16 +101,58 @@ variáveis de shell, então mantenha as aspas duplas.
 | Chave | Padrão | Observações |
 | --- | --- | --- |
 | `DASHBOARD_DATA_URL` | — | **Obrigatório.** `https://<projeto>.insforge.app/functions/kindle-dashboard-data` |
-| `DASHBOARD_EVENTS_URL` | — | `https://<projeto>.function2.insforge.app/kindle-dashboard-events`. Repare que o endereço é outro: o gateway normal `/functions/` segura os eventos ao vivo. Sem esta URL, as mudanças só chegam a cada `INTERVAL`. |
+| `DASHBOARD_EVENTS_URL` | — | `https://<projeto>.function2.insforge.app/kindle-dashboard-events`. Só é usada com `DASHBOARD_LIVE_UPDATES="1"`. Repare que o endereço é outro: o gateway normal `/functions/` segura os eventos ao vivo. |
 | `DASHBOARD_TOGGLE_URL` | — | `https://<projeto>.insforge.app/functions/kindle-dashboard-toggle`. Sem ela, tocar nos itens não faz nada. |
 | `DASHBOARD_READ_TOKEN` | — | **Obrigatório.** Vem dos segredos do backend, acima. |
 | `DASHBOARD_TOGGLE_TOKEN` | — | Vem dos segredos do backend, acima. |
 | `DASHBOARD_TITLE` | `Painel Kindle` | Texto do cabeçalho, em maiúsculas e sem acentos. Aparece nas listas abertas em tela cheia. |
-| `INTERVAL` | `300` | Segundos entre atualizações completas. O clima e a agenda seguem esse relógio; mudanças nas listas chegam na hora pela URL de eventos. |
+| `INTERVAL` | `180` | De quantos em quantos segundos o Kindle busca novidades no backend (180 = 3 minutos). **Quanto menor, mais bateria gasta.** Veja [Bateria](#bateria-e-frequência-de-atualização). |
+| `DASHBOARD_LIVE_UPDATES` | `0` | `1` liga a atualização instantânea (SSE): mudanças aparecem em segundos, mas a bateria dura bem menos. Precisa de `DASHBOARD_EVENTS_URL`. |
 | `DARK_MODE` | `0` | `1` para branco sobre preto. As opções "(claro)"/"(escuro)" do KUAL têm prioridade naquela execução. |
 | `DASHBOARD_KEEP_AWAKE` | `1` | `0` deixa o Kindle dormir normalmente. |
 | `DASHBOARD_SLEEP_WINDOW` | `off` | `HH:MM-HH:MM` pausa as atualizações à noite, ex.: `23:00-07:00`. |
 | `DASHBOARD_TIMEZONE` | o do Kindle | Defina (ex.: `America/Sao_Paulo`) se o relógio do Kindle mostrar o fuso errado. |
+
+### Bateria e frequência de atualização
+
+O painel não fica "ao vivo" o tempo todo por padrão. A cada `INTERVAL`
+segundos, o Kindle faz três coisas:
+
+1. usa o Wi-Fi para buscar os dados no backend;
+2. redesenha a tela e-ink;
+3. volta a esperar.
+
+Cada uma dessas buscas gasta bateria. Por isso:
+
+- **Quanto menor o `INTERVAL`, mais rápido as mudanças aparecem e mais
+  bateria o Kindle gasta.**
+- **Quanto maior, mais a bateria dura**, mas uma mudança feita no Telegram
+  pode demorar até esse tempo para aparecer.
+
+| `INTERVAL` | Mudanças aparecem em até | Bateria |
+| --- | --- | --- |
+| `60` | 1 minuto | Gasta mais |
+| `180` (padrão) | 3 minutos | Equilíbrio |
+| `600` | 10 minutos | Gasta menos |
+| `1800` | 30 minutos | Gasta bem menos |
+
+Isso vale para o que vem de fora (Telegram, clima, agenda). Tocar num item no
+próprio Kindle atualiza a tela na hora, seja qual for o intervalo.
+
+**Atualização instantânea (`DASHBOARD_LIVE_UPDATES="1"`):** o Kindle mantém
+uma conexão aberta com o servidor (SSE), e o servidor avisa na hora quando
+uma lista muda. As mudanças do Telegram aparecem em segundos, mas o Wi-Fi
+nunca descansa, e a bateria dura **bem menos**. Vale a pena se o Kindle
+ficar ligado na tomada.
+
+Outras opções que ajudam a bateria:
+
+- `DASHBOARD_SLEEP_WINDOW="23:00-07:00"`: não busca nada durante a noite.
+- `DASHBOARD_KEEP_AWAKE="0"`: deixa o Kindle entrar em descanso normalmente.
+  O painel para de atualizar enquanto ele estiver descansando.
+
+Se o Kindle ficar sempre na tomada, você pode usar um intervalo curto e a
+atualização instantânea sem preocupação.
 
 ### Sobre os acentos
 

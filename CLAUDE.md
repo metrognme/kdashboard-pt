@@ -148,8 +148,8 @@ de montagem.
 
 ```
 Telegram ──▶ telegram-webhook ──▶ Postgres (planner_items)  ──▶ kindle-dashboard-data ──▶ Kindle
-                   │                       │                            ▲      (a cada 5 min)
-                   └──▶ CalDAV (agenda)    └──▶ kindle-dashboard-events ─┘ (SSE: "busque de novo")
+                   │                       │                            ▲      (a cada 3 min)
+                   └──▶ CalDAV (agenda)    └──▶ kindle-dashboard-events ─┘ (SSE opcional: "busque de novo")
                                                 toque no Kindle ──▶ kindle-dashboard-toggle
 ```
 
@@ -174,6 +174,13 @@ sem contas de usuário: `x-telegram-bot-api-secret-token`,
 dono, de propósito: não há separação por usuário em lugar nenhum, e o
 `TELEGRAM_ALLOWED_CHAT_ID` é o que torna o bot privado.
 
+O Kindle busca o JSON a cada `INTERVAL` (padrão 180 s, em
+`kDefaultIntervalSeconds` e nos dois inicializadores). O SSE é opcional
+(`DASHBOARD_LIVE_UPDATES`, padrão `0`) por causa da bateria: quando está
+desligado, os inicializadores esvaziam `DASHBOARD_EVENTS_URL` e o
+`startEventWatcher` não abre a conexão. Qualquer mudança nesses padrões
+precisa refletir a troca entre rapidez e bateria na documentação.
+
 O `DASHBOARD_TIMEZONE` cai para `"America/Sao_Paulo"` tanto em `kindle-dashboard-data.ts`
 quanto em `telegram-webhook.ts` (`DEFAULT_TIMEZONE`); mantenha os dois padrões
 iguais.
@@ -195,7 +202,7 @@ Estes são os que quebram em silêncio se você esquecer:
   - O `kindle-dashboard-events.ts` recalcula uma versão a partir de
     `planner_items` e só avisa o Kindle quando ela muda.
   - Qualquer lista ou campo que o painel mostre e o hash ignore nunca dispara
-    aviso; só aparece na próxima atualização de 5 minutos.
+    aviso; só aparece na próxima busca por `INTERVAL`.
   - O clima e a agenda ficam de fora de propósito: mudam com o relógio, não
     com gravações.
 - **Toda gravação que muda `done` também precisa mudar `completed_at`**

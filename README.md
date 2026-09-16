@@ -6,7 +6,7 @@ Transforme um Kindle desbloqueado (jailbreak) num painel de casa sempre
 ligado, com tela e-ink: clima, sua agenda, lista de tarefas, lista de compras
 e notas, tudo numa tela só. Você atualiza mandando mensagem para um bot do
 Telegram ("comprar leite", "reunião amanhã às 14h" ou até um áudio), e o
-Kindle redesenha em segundos. Toque num item no Kindle para marcar como feito.
+Kindle mostra a mudança em poucos minutos. Toque num item no Kindle para marcar como feito.
 
 <p align="center">
   <img src="docs/images/preview-light.png" alt="Painel no tema claro" width="260">
@@ -31,8 +31,10 @@ imagem que quiser.</sub>
   - texto livre e áudio, se você adicionar uma chave de IA (opcional, com
     plano gratuito);
   - botão de desfazer, resumo diário e exportação.
-- **Atualização ao vivo** (SSE): uma mudança feita no celular aparece no
-  Kindle em segundos, não em minutos.
+- **Atualização no seu ritmo**: por padrão, o Kindle busca novidades a cada
+  3 minutos. Você escolhe o intervalo, sabendo que quanto mais curto, mais
+  bateria gasta. Há também um modo instantâneo (mudanças em segundos), ideal
+  para quem deixa o Kindle na tomada.
 - **Funciona offline**: os últimos dados ficam salvos e são redesenhados se o
   Wi-Fi cair.
 - **Personalização**:
@@ -101,19 +103,20 @@ detalhe.
 ```text
 Telegram ──▶ telegram-webhook ──▶ Postgres ──▶ kindle-dashboard-data ──▶ Kindle
                   │                   │                    ▲
-                  └──▶ CalDAV         └──▶ kindle-dashboard-events (SSE "busque de novo")
+                  └──▶ CalDAV         └──▶ kindle-dashboard-events (opcional: SSE "busque de novo")
 ```
 
 Um pequeno programa em C++ roda no Kindle:
 
-- baixa um único JSON do seu backend;
+- a cada 3 minutos (configurável), baixa um único JSON do seu backend;
 - desenha o painel direto no framebuffer da tela e-ink;
 - escuta os toques na tela.
 
 Do outro lado, quatro funções serverless no InsForge:
 
 - entregam esse JSON;
-- avisam o Kindle quando algo muda;
+- avisam o Kindle na hora quando algo muda (se o modo instantâneo estiver
+  ligado);
 - recebem os toques;
 - rodam o bot do Telegram.
 

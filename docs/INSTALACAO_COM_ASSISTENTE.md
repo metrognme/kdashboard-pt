@@ -130,7 +130,9 @@ Gere o config.sh do KUAL para o meu projeto. Use o endereço base do meu
 InsForge nas URLs de dados e de toggle, e o endereço direto function2 na URL
 de eventos. Busque DASHBOARD_READ_TOKEN e DASHBOARD_TOGGLE_TOKEN no InsForge e
 coloque no meu config.sh local. Pergunte qual título devo usar em
-DASHBOARD_TITLE.
+DASHBOARD_TITLE e de quanto em quanto tempo o Kindle deve buscar novidades
+(INTERVAL, padrão 180 segundos), explicando que intervalos menores e a
+atualização instantânea (DASHBOARD_LIVE_UPDATES) gastam mais bateria.
 Não altere o config.sh.example com os dados reais do meu projeto; crie ou
 mostre um config.sh local.
 ```
@@ -144,7 +146,8 @@ DASHBOARD_TOGGLE_URL="https://seu-projeto.insforge.app/functions/kindle-dashboar
 DASHBOARD_READ_TOKEN="troque-pelo-seu-read-token"
 DASHBOARD_TOGGLE_TOKEN="troque-pelo-seu-toggle-token"
 DASHBOARD_TITLE="Meu Kindle"
-INTERVAL="300"
+INTERVAL="180"
+DASHBOARD_LIVE_UPDATES="0"
 DASHBOARD_KEEP_AWAKE="1"
 DASHBOARD_SLEEP_WINDOW="off"
 DARK_MODE="0"
@@ -217,8 +220,10 @@ Se o painel estiver em branco ou desatualizado:
 ```text
 Investigue o problema do meu Painel Kindle. Comece pela URL de dados
 publicada, depois as URLs do config.sh do KUAL, e depois os logs do Kindle.
-Considere que o endpoint /functions normal não serve para SSE e teste os
-eventos pela URL function2.insforge.app.
+Lembre que, sem DASHBOARD_LIVE_UPDATES="1", as mudanças só aparecem a cada
+INTERVAL. Se a atualização instantânea estiver ligada, considere que o
+endpoint /functions normal não serve para SSE e teste os eventos pela URL
+function2.insforge.app.
 ```
 
 Se o clima ou a agenda aparecerem como indisponíveis:

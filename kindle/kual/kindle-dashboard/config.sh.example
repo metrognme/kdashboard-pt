@@ -12,9 +12,20 @@ DASHBOARD_TOGGLE_TOKEN="troque-pelo-seu-toggle-token"
 # o da sua familia, ou o que quiser.
 DASHBOARD_TITLE="Painel Kindle"
 
-# Padroes para ficar sempre ligado. So mude se souber o que quer.
-# INTERVAL: segundos entre atualizacoes completas (300 = 5 minutos).
-INTERVAL="300"
+# De quanto em quanto tempo o Kindle busca atualizacoes no backend, em
+# segundos. 180 = 3 minutos. Quanto MENOR o numero, mais rapido as mudancas
+# aparecem e MAIS BATERIA o Kindle gasta (Wi-Fi e tela trabalham mais vezes).
+# Sugestoes: 60 (1 min, gasta mais), 180 (padrao), 600 (10 min), 1800 (30 min,
+# gasta menos).
+INTERVAL="180"
+
+# Atualizacao instantanea (SSE): 1 = as mudancas aparecem em segundos, mas o
+# Kindle fica conectado ao servidor o tempo todo e a bateria dura BEM menos.
+# 0 (padrao) = o Kindle so busca novidades a cada INTERVAL.
+# So funciona com DASHBOARD_EVENTS_URL preenchida.
+DASHBOARD_LIVE_UPDATES="0"
+
+# Outros padroes. So mude se souber o que quer.
 # 1 = impede o Kindle de dormir enquanto o painel roda.
 DASHBOARD_KEEP_AWAKE="1"
 # "off" ou uma janela noturna sem atualizacoes, ex.: "23:00-07:00".

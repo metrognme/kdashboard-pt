@@ -7,8 +7,8 @@ instalar, veja o [INSTALACAO.md](INSTALACAO.md).
 
 ```text
 Telegram ──▶ telegram-webhook ──▶ Postgres (planner_items) ──▶ kindle-dashboard-data ──▶ Kindle
-                  │                        │                            ▲    (a cada 5 min)
-                  └──▶ CalDAV (agenda)     └──▶ kindle-dashboard-events ─┘ (SSE: "busque de novo")
+                  │                        │                            ▲    (a cada 3 min)
+                  └──▶ CalDAV (agenda)     └──▶ kindle-dashboard-events ─┘ (opcional, SSE: "busque de novo")
                                                 toque no Kindle ──▶ kindle-dashboard-toggle
 ```
 
@@ -16,7 +16,9 @@ O conteúdo nunca é editado no próprio Kindle. O fluxo é:
 
 1. você fala com um bot do Telegram;
 2. o bot grava no seu banco (ou no seu calendário);
-3. o Kindle é avisado para buscar de novo um JSON pequeno e redesenhar a tela.
+3. o Kindle busca de novo um JSON pequeno e redesenha a tela: a cada
+   `INTERVAL` (3 minutos por padrão) ou, com a atualização instantânea
+   ligada, assim que o servidor avisa.
 
 ## As Peças
 
@@ -72,7 +74,7 @@ const payload = {
 ```
 
 O clima e a agenda são buscados ao vivo a cada requisição, porque o Open-Meteo
-e o CalDAV são baratos de chamar no intervalo de atualização do Kindle (5
+e o CalDAV são baratos de chamar no intervalo de atualização do Kindle (3
 minutos por padrão). Essas buscas nunca lançam erro: se uma fonte falhar, só
 aquele módulo é marcado como `available: false`. Assim, um soluço no Wi-Fi de
 um módulo nunca derruba o JSON inteiro:
@@ -702,6 +704,12 @@ nunca vem da tela de toque. O painel sempre começa desbloqueado: a flag é uma
 variável global simples, zerada a cada nova execução.
 
 ## Detecção De Mudanças
+
+Esta parte só é usada com `DASHBOARD_LIVE_UPDATES="1"`. Ela vem desligada por
+padrão porque a conexão SSE fica aberta o tempo todo e impede o Wi-Fi do
+Kindle de descansar, o que gasta bem mais bateria. Sem ela, o Kindle só busca
+novidades a cada `INTERVAL`; os inicializadores esvaziam a
+`DASHBOARD_EVENTS_URL`, e o programa não abre a conexão.
 
 Uma edge function SSE no InsForge verifica se houve mudança nas listas. A
 cada poucos segundos, ela calcula uma versão a partir dos itens:

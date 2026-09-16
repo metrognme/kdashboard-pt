@@ -16,7 +16,11 @@ RUN_APP="${RUN_APP:-/tmp/kindle-dashboard-native}"
 CACHE="${CACHE:-/mnt/us/documents/kindle-dashboard-data.json}"
 LOG="${LOG:-/mnt/us/documents/kindle-dashboard-native.log}"
 SAVE_PGM="${SAVE_PGM:-}"
-INTERVAL="${INTERVAL:-300}"
+INTERVAL="${INTERVAL:-180}"
+# Live updates (SSE) hold a connection open, which keeps Wi-Fi from ever idling,
+# so they are opt-in. Off: the Kindle only checks the backend every INTERVAL.
+DASHBOARD_LIVE_UPDATES="${DASHBOARD_LIVE_UPDATES:-0}"
+[ "$DASHBOARD_LIVE_UPDATES" = "1" ] || DASHBOARD_EVENTS_URL=""
 DASHBOARD_KEEP_AWAKE="${DASHBOARD_KEEP_AWAKE:-1}"
 DASHBOARD_SLEEP_WINDOW="${DASHBOARD_SLEEP_WINDOW:-off}"
 DASHBOARD_TITLE="${DASHBOARD_TITLE:-Painel Kindle}"

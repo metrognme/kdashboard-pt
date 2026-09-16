@@ -498,16 +498,21 @@ DASHBOARD_TOGGLE_URL="https://seu-projeto.insforge.app/functions/kindle-dashboar
 DASHBOARD_READ_TOKEN="troque-pelo-seu-read-token"
 DASHBOARD_TOGGLE_TOKEN="troque-pelo-seu-toggle-token"
 DASHBOARD_TITLE="Meu Kindle"
-INTERVAL="300"
+INTERVAL="180"
+DASHBOARD_LIVE_UPDATES="0"
 DASHBOARD_KEEP_AWAKE="1"
 DASHBOARD_SLEEP_WINDOW="off"
 DARK_MODE="0"
 ```
 
-`INTERVAL` é o intervalo de atualização de reserva, em segundos (300 = 5
-minutos). As mudanças nas listas normalmente chegam antes, pela URL de
-eventos. O intervalo é o que atualiza o clima e a agenda, e o que cobre os
-momentos em que a conexão de eventos cai.
+`INTERVAL` define de quantos em quantos segundos o Kindle busca novidades
+(180 = 3 minutos). **Quanto menor o número, mais bateria o Kindle gasta.**
+Com o padrão, uma mudança feita no Telegram aparece em até 3 minutos.
+
+`DASHBOARD_LIVE_UPDATES="1"` faz as mudanças aparecerem em segundos, mas
+mantém o Kindle conectado o tempo todo e gasta bem mais bateria; é mais
+indicado para quem deixa o Kindle na tomada. A tabela completa está em
+[Bateria e frequência de atualização](CONFIGURACAO.md#bateria-e-frequência-de-atualização).
 
 Pegue os tokens no InsForge e cole no `config.sh`:
 
@@ -516,8 +521,9 @@ npx @insforge/cli secrets get DASHBOARD_READ_TOKEN --json
 npx @insforge/cli secrets get DASHBOARD_TOGGLE_TOKEN --json
 ```
 
-Use o endereço direto `function2.insforge.app` na URL de eventos. O gateway
-normal `/functions/...` do InsForge pode segurar as respostas SSE.
+Se for usar a atualização instantânea, use o endereço direto
+`function2.insforge.app` na URL de eventos. O gateway normal `/functions/...`
+do InsForge pode segurar as respostas SSE.
 
 Ejete o Kindle com segurança antes de desconectar o cabo.
 
@@ -559,8 +565,8 @@ Arquivos úteis no Kindle:
 
 O programa usa um perfil "sempre ligado":
 
-- atualização automática a cada `INTERVAL` segundos (5 minutos por padrão);
-- atualização ao vivo por SSE;
+- busca novidades a cada `INTERVAL` segundos (3 minutos por padrão);
+- atualização instantânea por SSE só se você ligar `DASHBOARD_LIVE_UPDATES`;
 - atualização manual pelo KUAL quando você quiser;
 - nenhum modo noturno silencioso, por padrão.
 
@@ -600,7 +606,7 @@ curl -sS -H "X-Dashboard-Read-Token: <read-token>" \
 | Horários dos eventos errados por algumas horas | Se você não está no horário de Brasília, configure `DASHBOARD_TIMEZONE` no backend (e no `config.sh`, se o relógio do próprio Kindle estiver errado). |
 | O bot não responde | Rode `npm run telegram:configure` de novo. O bot fica em silêncio para qualquer chat que não seja o `TELEGRAM_ALLOWED_CHAT_ID`, então confira o ID do chat. |
 | O bot diz que a cota acabou | O limite diário do plano gratuito da IA foi atingido. Os botões do menu continuam funcionando, e a cota renova no dia seguinte. |
-| As mudanças demoram minutos para aparecer | A `DASHBOARD_EVENTS_URL` precisa usar o endereço `function2.insforge.app`. |
+| As mudanças demoram minutos para aparecer | É o normal: elas aparecem em até `INTERVAL` segundos (3 minutos por padrão). Diminua o `INTERVAL` ou ligue `DASHBOARD_LIVE_UPDATES="1"`, sabendo que ambos gastam mais bateria. Com a atualização instantânea ligada, a `DASHBOARD_EVENTS_URL` precisa usar o endereço `function2.insforge.app`. |
 | Tocar nos itens não faz nada | Confira `DASHBOARD_TOGGLE_URL` e `DASHBOARD_TOGGLE_TOKEN` no `config.sh`. |
 | Travou no deploy? | O `npm run kit:backend` às vezes termina o trabalho e não devolve o terminal. Se nada aparecer por um ou dois minutos, aperte `Ctrl+C` e confira com `npx @insforge/cli functions code telegram-webhook` se a função foi publicada. |
 
