@@ -40,7 +40,12 @@ O `npm run telegram:configure` configura `TELEGRAM_BOT_TOKEN` e
 | --- | --- | --- |
 | `INSFORGE_BASE_URL` | `https://abc123.us-east.insforge.app` | A URL da API do seu projeto (no painel do InsForge, ou com `npx @insforge/cli current`). |
 | `INSFORGE_API_KEY` | — | A chave de API de servidor do projeto. Nunca coloque no Kindle. |
-| `DASHBOARD_TIMEZONE` | `America/Sao_Paulo` | Um [fuso horário IANA](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). Sem ele, tudo roda em UTC, e os horários dos eventos e o "amanhã" saem errados. |
+
+### Fuso horário
+
+| Chave | Padrão | Observações |
+| --- | --- | --- |
+| `DASHBOARD_TIMEZONE` | `America/Sao_Paulo` | Um [fuso horário IANA](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). Só precisa configurar se você não estiver no horário de Brasília (ex.: `America/Manaus`, `America/Cuiaba`, `America/Rio_Branco`, `America/Noronha`). Com o fuso errado, os horários dos eventos e o "amanhã" saem errados. |
 
 ### Clima
 

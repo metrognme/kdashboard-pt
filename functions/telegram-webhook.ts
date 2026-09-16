@@ -763,8 +763,8 @@ const LIST_EMOJI: Record<ListKey, string> = { grocery: "🛒", todo: "📋", not
 
 // Shared by the digest, zonedNowContext() and formatEventTime() below, so the
 // fallback lives in one place and can't drift between copies. Owners are
-// expected to set DASHBOARD_TIMEZONE; UTC matches kindle-dashboard-data.ts.
-const DEFAULT_TIMEZONE = "UTC";
+// expected to set DASHBOARD_TIMEZONE; this default matches kindle-dashboard-data.ts.
+const DEFAULT_TIMEZONE = "America/Sao_Paulo";
 
 function configuredTimezone(): string {
   return Deno.env.get("DASHBOARD_TIMEZONE") || DEFAULT_TIMEZONE;
@@ -2585,7 +2585,7 @@ function parseIcsDate(line: string): { iso: string; allDay: boolean } | null {
   // runtime's own zone — UTC on the edge host — so every confirmation and
   // every agenda line was off by the calendar's offset.
   const tzid = /TZID=([^;:]+)/i.exec(params)?.[1]?.trim();
-  const zone = tzid || Deno.env.get("DASHBOARD_TIMEZONE") || "UTC";
+  const zone = tzid || configuredTimezone();
   const parsed = wallClockToUtc(year, month, day, hour, minute, second, zone);
   if (!parsed || Number.isNaN(parsed.getTime())) return null;
   return { iso: isoSeconds(parsed), allDay: false };

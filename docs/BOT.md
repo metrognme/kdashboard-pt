@@ -436,7 +436,7 @@ linha de tempo com `total_ms`.
 | O áudio diz que precisa de IA configurada | `LLM_BASE_URL` não aponta para o Gemini e `LLM_AUDIO_BASE_URL` não está definida |
 | Os eventos são salvos mas nunca aparecem | `CALDAV_CALENDAR_PATH` aponta para uma coleção diferente da que o painel lê |
 | A agenda mostra menos eventos do que existem | `AGENDA_LOOKAHEAD_DAYS` foi reduzido; ele limita a busca, então o que passar dele fica invisível |
-| Os horários dos eventos estão errados por um número fixo de horas | Configure `DASHBOARD_TIMEZONE` no backend |
+| Os horários dos eventos estão errados por um número fixo de horas | Você não está no horário de Brasília: configure `DASHBOARD_TIMEZONE` no backend |
 | Um botão fica carregando para sempre | A função deu erro antes do `answerCallbackQuery`; procure essa requisição nos logs |
 
 ---

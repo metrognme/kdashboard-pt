@@ -57,6 +57,9 @@ type DashboardPayload = {
   }>;
 };
 
+// Fallback when DASHBOARD_TIMEZONE is unset; must match telegram-webhook.ts.
+const DEFAULT_TIMEZONE = "America/Sao_Paulo";
+
 const LIST_TITLES: Record<ListKey, string> = {
   todo: "Tarefas",
   grocery: "Compras",
@@ -440,7 +443,7 @@ function parseIcsDate(line: string): { iso: string; allDay: boolean } | null {
   // runtime's own zone — UTC on the edge host — which shifted every one of
   // these events by the calendar's offset, silently and in the wrong direction.
   const tzid = /TZID=([^;:]+)/i.exec(params)?.[1]?.trim();
-  const zone = tzid || Deno.env.get("DASHBOARD_TIMEZONE") || "UTC";
+  const zone = tzid || Deno.env.get("DASHBOARD_TIMEZONE") || DEFAULT_TIMEZONE;
   const parsed = wallClockToUtc(year, month, day, hour, minute, second, zone);
   if (!parsed || Number.isNaN(parsed.getTime())) return null;
   return { iso: isoSeconds(parsed), allDay: false };
@@ -713,7 +716,7 @@ function decodeXmlEntities(value: string): string {
 function toLocalIsoString(isoUtc: string): string {
   const date = new Date(isoUtc);
   if (Number.isNaN(date.getTime())) return isoUtc;
-  return zonedIsoString(date, Deno.env.get("DASHBOARD_TIMEZONE") || "UTC");
+  return zonedIsoString(date, Deno.env.get("DASHBOARD_TIMEZONE") || DEFAULT_TIMEZONE);
 }
 
 function zonedIsoString(date: Date, timeZone: string): string {

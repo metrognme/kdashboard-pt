@@ -68,11 +68,11 @@ por vez e nunca mostre o segredo completo de volta depois que eu digitar.
 Obrigatórios:
 - INSFORGE_BASE_URL
 - INSFORGE_API_KEY
-- DASHBOARD_TIMEZONE (um nome IANA, ex.: America/Sao_Paulo)
 - WEATHER_LAT
 - WEATHER_LON
 
 Opcionais:
+- DASHBOARD_TIMEZONE (padrão: America/Sao_Paulo; só se eu estiver em outro fuso)
 - CALDAV_BASE_URL, CALDAV_CALENDAR_PATH, CALDAV_USERNAME, CALDAV_PASSWORD
   (os quatro, ou nenhum)
 - LLM_API_KEY
@@ -88,7 +88,6 @@ O assistente pode rodar comandos como:
 ```sh
 npx @insforge/cli secrets add INSFORGE_BASE_URL https://seu-projeto.insforge.app
 npx @insforge/cli secrets add INSFORGE_API_KEY sua-api-key-do-servidor
-npx @insforge/cli secrets add DASHBOARD_TIMEZONE America/Sao_Paulo
 npx @insforge/cli secrets add WEATHER_LAT -23.5505
 npx @insforge/cli secrets add WEATHER_LON -46.6333
 npx @insforge/cli secrets add CALDAV_BASE_URL https://seu-servidor-caldav

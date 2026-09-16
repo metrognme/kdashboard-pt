@@ -174,7 +174,7 @@ sem contas de usuário: `x-telegram-bot-api-secret-token`,
 dono, de propósito: não há separação por usuário em lugar nenhum, e o
 `TELEGRAM_ALLOWED_CHAT_ID` é o que torna o bot privado.
 
-O `DASHBOARD_TIMEZONE` cai para `"UTC"` tanto em `kindle-dashboard-data.ts`
+O `DASHBOARD_TIMEZONE` cai para `"America/Sao_Paulo"` tanto em `kindle-dashboard-data.ts`
 quanto em `telegram-webhook.ts` (`DEFAULT_TIMEZONE`); mantenha os dois padrões
 iguais.
 

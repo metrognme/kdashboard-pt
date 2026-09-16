@@ -81,19 +81,21 @@ O script de preparação faz três coisas:
 
 ## 2. Adicione Os Segredos Do Backend
 
-Configure a URL do backend, a chave de API e o seu fuso horário. Esses valores
-são segredos das funções no servidor, não do Kindle. A URL e a chave de API
-ficam no painel do seu projeto no InsForge.
+Configure a URL do backend e a chave de API. Esses valores são segredos das
+funções no servidor, não do Kindle. Os dois ficam no painel do seu projeto no
+InsForge.
 
 ```sh
 npx @insforge/cli secrets add INSFORGE_BASE_URL https://seu-projeto.insforge.app
 npx @insforge/cli secrets add INSFORGE_API_KEY sua-api-key-do-servidor
-npx @insforge/cli secrets add DASHBOARD_TIMEZONE America/Sao_Paulo
 ```
 
-Use o nome do seu [fuso horário IANA](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)
-(por exemplo, `America/Manaus` ou `America/Recife`). Sem ele, tudo roda em
-UTC.
+O fuso horário padrão é o de Brasília (`America/Sao_Paulo`). Se você estiver
+em outro fuso, configure o seu [nome IANA](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones):
+
+```sh
+npx @insforge/cli secrets add DASHBOARD_TIMEZONE America/Manaus
+```
 
 Clima (Open-Meteo: gratuito, sem chave, só a sua localização em graus
 decimais; no Google Maps, clique com o botão direito num ponto para copiar):
@@ -595,7 +597,7 @@ curl -sS -H "X-Dashboard-Read-Token: <read-token>" \
 | `OFFLINE` embaixo do cabeçalho | O Kindle está sem rede. Verifique o Wi-Fi dele. |
 | `401` no `curl` acima | O `DASHBOARD_READ_TOKEN` não bate com o segredo do backend. |
 | Clima ou agenda "indisponível" | A resposta tem `"available": false` naquele módulo: confira os segredos `WEATHER_*` ou `CALDAV_*`. O resto do painel continua funcionando. |
-| Horários dos eventos errados por algumas horas | Configure `DASHBOARD_TIMEZONE` no backend (e no `config.sh`, se o relógio do próprio Kindle estiver errado). |
+| Horários dos eventos errados por algumas horas | Se você não está no horário de Brasília, configure `DASHBOARD_TIMEZONE` no backend (e no `config.sh`, se o relógio do próprio Kindle estiver errado). |
 | O bot não responde | Rode `npm run telegram:configure` de novo. O bot fica em silêncio para qualquer chat que não seja o `TELEGRAM_ALLOWED_CHAT_ID`, então confira o ID do chat. |
 | O bot diz que a cota acabou | O limite diário do plano gratuito da IA foi atingido. Os botões do menu continuam funcionando, e a cota renova no dia seguinte. |
 | As mudanças demoram minutos para aparecer | A `DASHBOARD_EVENTS_URL` precisa usar o endereço `function2.insforge.app`. |
