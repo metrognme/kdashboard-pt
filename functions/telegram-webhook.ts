@@ -497,11 +497,12 @@ const OVERVIEW_LIST_ORDER: ListKey[] = ["todo", "notes", "grocery"];
 async function buildListsOverview(admin: any): Promise<string> {
   const { data, error } = await admin.database
     .from("planner_items")
-    .select("list_key, text, done, important, created_at")
+    .select("id, list_key, text, done, important, created_at")
     .order("created_at", { ascending: true });
   if (error) throw error;
 
-  const rows = (data ?? []) as { list_key: ListKey; text: string; done: boolean; important: boolean }[];
+  const rows = (data ?? []) as
+    { id: string; list_key: ListKey; text: string; done: boolean; important: boolean; created_at: string }[];
   const listBlocks = OVERVIEW_LIST_ORDER.map((key) => renderListBlock(key, rows.filter((row) => row.list_key === key)));
 
   // The agenda is fetched alongside because the bot's fourth category is
@@ -518,9 +519,11 @@ async function buildListsOverview(admin: any): Promise<string> {
 // Open-and-important first, then open, then done-and-important, then done —
 // numbers below are assigned over this exact order so "conclua a tarefa 3"
 // always resolves to the row a user just read as "3." in /listas. Relies on
-// Array#sort being stable (guaranteed since ES2019), so each group keeps the
-// created_at-ascending order the query already returned.
-function orderForNumbering<T extends { done?: boolean; important?: boolean }>(rows: T[]): T[] {
+// created_at, then id, inside each group, so the result never depends on the
+// order the query happened to return tied rows in.
+function orderForNumbering<T extends { id: string; created_at: string; done?: boolean; important?: boolean }>(
+  rows: T[],
+): T[] {
   return [...rows].sort((a, b) => {
     const aDone = Boolean(a.done);
     const bDone = Boolean(b.done);
@@ -528,11 +531,18 @@ function orderForNumbering<T extends { done?: boolean; important?: boolean }>(ro
     const aImportant = Boolean(a.important);
     const bImportant = Boolean(b.important);
     if (aImportant !== bImportant) return aImportant ? -1 : 1;
+    // Rows inserted by one message share created_at (NOW() is per transaction), and
+    // Postgres returns ties in no fixed order, so id breaks them the same way everywhere.
+    if (a.created_at !== b.created_at) return a.created_at < b.created_at ? -1 : 1;
+    if (a.id !== b.id) return a.id < b.id ? -1 : 1;
     return 0;
   });
 }
 
-function renderListBlock(key: ListKey, rows: { text: string; done: boolean; important: boolean }[]): string {
+function renderListBlock(
+  key: ListKey,
+  rows: { id: string; text: string; done: boolean; important: boolean; created_at: string }[],
+): string {
   const label = LIST_LABELS[key];
   if (rows.length === 0) return `${label}\n(vazia)`;
 

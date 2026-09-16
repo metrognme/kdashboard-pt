@@ -223,11 +223,17 @@ Estes são os que quebram em silêncio se você esquecer:
     reabrir do webhook.
 - **Os números dos itens no Kindle precisam bater com os do `/listas`.**
   - O `orderForNumbering` está duplicado, idêntico, em
-    `kindle-dashboard-data.ts` e `telegram-webhook.ts`, e os dois consultam
-    ordenando por `created_at` crescente.
+    `kindle-dashboard-data.ts` e `telegram-webhook.ts`. A ordem final é
+    total (desempate por `created_at` e depois `id`, porque itens gravados
+    pela mesma mensagem têm o mesmo `created_at`), então não depende da ordem
+    em que a consulta devolveu as linhas; as consultas precisam selecionar
+    `id` e `created_at`.
   - O `kindle-dashboard-data.ts` numera todas as linhas **antes** de esconder
     as concluídas antigas (`shouldShowPlannerItem`) e envia `number` e
     `important` por item.
+  - Um toque no Kindle muda a ordem no servidor; o programa esconde os
+    números (`g_item_numbers_stale`) até a próxima busca bem-sucedida, em vez
+    de mostrar números velhos.
   - Mudar a ordem num lado sem mudar no outro faz "exclua o item 2" apagar a
     linha errada.
 - **Horários saem com deslocamento explícito, nunca com `Z`.** O programa não

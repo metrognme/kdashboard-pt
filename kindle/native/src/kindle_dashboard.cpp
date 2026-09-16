@@ -72,6 +72,11 @@ long long g_last_drawn_ms = 0;
 int g_last_render_skipped = 0;
 char g_last_fetch_status[32] = "live";
 const long long kForcedRedrawMs = 30LL * 60 * 1000;
+// Set by a touch toggle, cleared by the next successful fetch. The backend numbers rows in
+// the bot's /listas order (open before done), so flipping one locally reorders the list;
+// the Kindle cannot renumber on its own (stale done rows it never received still hold
+// numbers), so rows are drawn without numbers until the server's numbering is back.
+int g_item_numbers_stale = 0;
 
 enum TouchAction {
   kTouchNone = 0,
@@ -377,7 +382,7 @@ void formatItemRow(const Item* item, char* out, size_t size, int max_text) {
   char item_text[96];
   upperCopy(item_text, sizeof(item_text), item->text);
   const char* box = item->done ? "[X]" : "[ ]";
-  if (item->number > 0) {
+  if (item->number > 0 && !g_item_numbers_stale) {
     snprintf(out, size, "%s %s%d. %.*s", box, item->important ? "!" : "", item->number, max_text, item_text);
   } else {
     snprintf(out, size, "%s %s%.*s", box, item->important ? "!" : "", max_text, item_text);
@@ -2447,6 +2452,7 @@ int handlePendingTouch(const Options* options) {
     const int next_done = g_pending_item_done ? 0 : 1;
     fprintf(stderr, "touch=toggle-list-item id=%s done=%d\n", g_pending_item_id, next_done);
     patchCachedItemDone(options->cache, g_pending_item_id, next_done);
+    g_item_numbers_stale = 1;
     postToggleItemAsync(options->toggle_url, options->toggle_token, g_pending_item_id, next_done);
     return 1;
   }
@@ -2719,11 +2725,12 @@ void renderPayload(const char* payload, const char* status, const char* dump_pgm
     return;
   }
   // Everything that changes the pixels: data version, the header's date + status line,
-  // which view is open, the lock icon and the theme.
+  // which view is open, the lock icon, the theme and whether item numbers are shown.
   char signature[sizeof(g_last_drawn_signature)];
   char date_line[96];
   formatDisplayDate(dashboard.generated_at, status, date_line, sizeof(date_line));
-  snprintf(signature, sizeof(signature), "%.31s|%.96s|%d|%d|%d", dashboard.version, date_line, g_active_list, g_screen_locked, g_dark_mode);
+  snprintf(signature, sizeof(signature), "%.31s|%.96s|%d|%d|%d|%d", dashboard.version, date_line, g_active_list, g_screen_locked, g_dark_mode,
+           g_item_numbers_stale);
   if (mode == kRenderIfChanged && g_last_drawn_signature[0] && strcmp(signature, g_last_drawn_signature) == 0 &&
       started - g_last_drawn_ms < kForcedRedrawMs) {
     g_last_render_skipped = 1;
@@ -2971,6 +2978,7 @@ int main(int argc, char** argv) {
     buildDashboardUrl(options.url, dashboard_url, sizeof(dashboard_url));
     const int fetched = fetchToCache(dashboard_url, options.read_token, options.cache);
     copyText(g_last_fetch_status, sizeof(g_last_fetch_status), fetched ? "live" : "cached/offline");
+    if (fetched) g_item_numbers_stale = 0;
     if (!renderCachedPayload(&options, g_last_fetch_status, kRenderIfChanged)) {
       char lines[kMaxRows][96];
       int count = 0;

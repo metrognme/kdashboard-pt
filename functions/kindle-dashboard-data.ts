@@ -760,9 +760,10 @@ function asciiFoldUpper(text: string): string {
 
 // Copy of orderForNumbering in telegram-webhook.ts (functions share no modules);
 // the two must stay identical or the Kindle's numbers stop matching the bot's.
-// Open before done, important first within each; the stable sort keeps the
-// created_at-ascending order of the query inside each group.
-function orderForNumbering<T extends { done?: boolean; important?: boolean }>(rows: T[]): T[] {
+// Open before done, important first within each, then created_at and id.
+function orderForNumbering<T extends { id: string; created_at: string; done?: boolean; important?: boolean }>(
+  rows: T[],
+): T[] {
   return [...rows].sort((a, b) => {
     const aDone = Boolean(a.done);
     const bDone = Boolean(b.done);
@@ -770,6 +771,10 @@ function orderForNumbering<T extends { done?: boolean; important?: boolean }>(ro
     const aImportant = Boolean(a.important);
     const bImportant = Boolean(b.important);
     if (aImportant !== bImportant) return aImportant ? -1 : 1;
+    // Rows inserted by one message share created_at (NOW() is per transaction), and
+    // Postgres returns ties in no fixed order, so id breaks them the same way everywhere.
+    if (a.created_at !== b.created_at) return a.created_at < b.created_at ? -1 : 1;
+    if (a.id !== b.id) return a.id < b.id ? -1 : 1;
     return 0;
   });
 }

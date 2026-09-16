@@ -237,6 +237,11 @@ então dá para ler o número direto na tela e mandar "exclua o item 2 das
 compras". Itens concluídos há mais de 24 h somem do Kindle, mas os números dos
 outros não mudam por isso.
 
+Quando você toca num item no Kindle para concluir ou reabrir, a ordem da lista
+muda no bot na mesma hora. Por isso o Kindle **esconde os números** até a
+próxima busca (no máximo `INTERVAL`, 3 minutos por padrão), em vez de mostrar
+um número que já não vale mais.
+
 Use o número em vez de digitar o texto de novo: `conclua a tarefa 3`,
 `exclua o item 2 da lista de compras`, `cancela o evento 1`. Um número sempre
 aponta para exatamente um item, então, ao contrário de um trecho de texto,

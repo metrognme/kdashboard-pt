@@ -464,13 +464,17 @@ Três detalhes do contrato de que o programa do Kindle depende:
   ordem e com os mesmos números (`number`) que o `/listas` do bot usa:
   - abertos antes de concluídos;
   - importantes primeiro dentro de cada grupo;
-  - mais antigos primeiro dentro disso.
+  - mais antigos primeiro dentro disso (`created_at`, com `id` como
+    desempate: itens gravados pela mesma mensagem têm o mesmo `created_at`).
 
   A função `orderForNumbering` existe em cópias idênticas no
   `kindle-dashboard-data.ts` e no `telegram-webhook.ts`. Os números são
   calculados sobre todas as linhas antes de esconder os itens concluídos há
   mais de 24 h, então esconder um item nunca muda o número de outro. O
-  programa só imprime o `number` que recebe (`[ ] !1. PAGAR LUZ`).
+  programa só imprime o `number` que recebe (`[ ] !1. PAGAR LUZ`). Depois de
+  um toque que conclui ou reabre um item, ele não sabe renumerar (não recebe
+  as linhas escondidas), então desenha os itens sem número
+  (`g_item_numbers_stale`) até a próxima busca bem-sucedida.
 - **Horários dos eventos:** eventos com horário são convertidos para o
   horário local do painel com o deslocamento explícito (`-03:00` acima), e
   não em UTC com `Z`. O programa não tem tabelas de fuso e imprime os dígitos
