@@ -50,7 +50,7 @@ itens pela função de toggle.
 Clone o repositório, instale as dependências e entre no InsForge:
 
 ```sh
-git clone <este-repo> kindle-dashboard
+git clone https://github.com/metrognme/kdashboard-pt.git kindle-dashboard
 cd kindle-dashboard
 npm install
 npx @insforge/cli login

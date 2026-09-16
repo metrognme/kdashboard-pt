@@ -74,7 +74,7 @@ O jailbreak depende do modelo e da versão de firmware do seu Kindle, e é a
 A versão curta, depois que o seu Kindle já tem KUAL:
 
 ```sh
-git clone <este-repo> kindle-dashboard && cd kindle-dashboard
+git clone https://github.com/metrognme/kdashboard-pt.git kindle-dashboard && cd kindle-dashboard
 npm install
 npx @insforge/cli login
 npx @insforge/cli create --name kindle-dashboard --region us-east --template empty
