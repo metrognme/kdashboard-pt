@@ -181,6 +181,16 @@ desligado, os inicializadores esvaziam `DASHBOARD_EVENTS_URL` e o
 `startEventWatcher` não abre a conexão. Qualquer mudança nesses padrões
 precisa refletir a troca entre rapidez e bateria na documentação.
 
+Depois de cada busca, o `renderPayload` (modo `kRenderIfChanged`) pula o
+desenho se a assinatura da tela (versão + linha de data/status + lista aberta
++ bloqueio + tema) for igual à última desenhada; há redesenho forçado a cada
+`kForcedRedrawMs`. Qualquer coisa nova que mude os pixels precisa entrar
+nessa assinatura. Desenhos por toque usam `kRenderForce`, que apaga a
+assinatura, para a próxima busca sempre corrigir a tela. Fora do Kindle nada
+é "desenhado" (sem framebuffer), então o skip só aparece no log de um
+aparelho real, ou numa cópia de teste em que `dumpBitmapPreview` conte como
+desenho.
+
 O `DASHBOARD_TIMEZONE` cai para `"America/Sao_Paulo"` tanto em `kindle-dashboard-data.ts`
 quanto em `telegram-webhook.ts` (`DEFAULT_TIMEZONE`); mantenha os dois padrões
 iguais.

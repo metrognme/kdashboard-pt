@@ -119,10 +119,15 @@ O painel não fica "ao vivo" o tempo todo por padrão. A cada `INTERVAL`
 segundos, o Kindle faz três coisas:
 
 1. usa o Wi-Fi para buscar os dados no backend;
-2. redesenha a tela e-ink;
+2. redesenha a tela e-ink, **só se algo mudou**;
 3. volta a esperar.
 
-Cada uma dessas buscas gasta bateria. Por isso:
+Se nada mudou, a tela não é redesenhada, o que economiza bateria e evita
+piscadas à toa. Mesmo assim, a cada 30 minutos o painel é redesenhado por
+completo, para limpar qualquer aviso do próprio Kindle que tenha ficado por
+cima.
+
+Cada busca gasta bateria com o Wi-Fi. Por isso:
 
 - **Quanto menor o `INTERVAL`, mais rápido as mudanças aparecem e mais
   bateria o Kindle gasta.**

@@ -60,6 +60,18 @@ int g_dark_mode = 0;
 // starts unlocked: there is no reason for this to survive a relaunch, and a
 // relaunch redraws the whole screen from scratch anyway.
 int g_screen_locked = 0;
+// Skip-unchanged redraws (battery). Every fetch used to redraw the whole e-ink panel even
+// when nothing changed. g_last_drawn_signature describes what is on the glass after a
+// kRenderIfChanged/kRenderRecord draw; any other draw clears it so the next fetch always
+// repaints (e.g. an optimistic touch toggle the server never accepted must get corrected).
+// A full redraw is still forced every kForcedRedrawMs, to clear anything the Kindle's own
+// UI (popups, warnings) may have left on top of the dashboard.
+enum RenderMode { kRenderForce, kRenderIfChanged, kRenderRecord };
+char g_last_drawn_signature[160] = "";
+long long g_last_drawn_ms = 0;
+int g_last_render_skipped = 0;
+char g_last_fetch_status[32] = "live";
+const long long kForcedRedrawMs = 30LL * 60 * 1000;
 
 enum TouchAction {
   kTouchNone = 0,
@@ -2666,8 +2678,9 @@ int dumpBitmapPreview(const Dashboard* dashboard, const char* status, const char
   return ok;
 }
 
-void renderPayload(const char* payload, const char* status, const char* dump_pgm, const char* save_pgm, int dump_width, int dump_height) {
+void renderPayload(const char* payload, const char* status, const char* dump_pgm, const char* save_pgm, int dump_width, int dump_height, RenderMode mode = kRenderForce) {
   const long long started = monotonicMs();
+  g_last_render_skipped = 0;
   char lines[kMaxRows][96];
   Dashboard dashboard;
   if (!parseDashboard(payload, &dashboard)) {
@@ -2688,16 +2701,31 @@ void renderPayload(const char* payload, const char* status, const char* dump_pgm
     fprintf(stderr, "timing=render status=dump ms=%lld\n", monotonicMs() - started);
     return;
   }
-  if (renderViaFbink(&dashboard, status, save_pgm)) {
+  // Everything that changes the pixels: data version, the header's date + status line,
+  // which view is open, the lock icon and the theme.
+  char signature[sizeof(g_last_drawn_signature)];
+  char date_line[96];
+  formatDisplayDate(dashboard.generated_at, status, date_line, sizeof(date_line));
+  snprintf(signature, sizeof(signature), "%.31s|%.96s|%d|%d|%d", dashboard.version, date_line, g_active_list, g_screen_locked, g_dark_mode);
+  if (mode == kRenderIfChanged && g_last_drawn_signature[0] && strcmp(signature, g_last_drawn_signature) == 0 &&
+      started - g_last_drawn_ms < kForcedRedrawMs) {
+    g_last_render_skipped = 1;
+    fprintf(stderr, "render=skip unchanged version=%s\n", dashboard.version);
     freeDashboard(&dashboard);
-    fprintf(stderr, "timing=render status=fbink ms=%lld\n", monotonicMs() - started);
     return;
   }
-  if (renderToFramebuffer(&dashboard, status, save_pgm)) {
+  if (renderViaFbink(&dashboard, status, save_pgm) || renderToFramebuffer(&dashboard, status, save_pgm)) {
+    if (mode == kRenderForce) {
+      g_last_drawn_signature[0] = '\0';
+    } else {
+      copyText(g_last_drawn_signature, sizeof(g_last_drawn_signature), signature);
+      g_last_drawn_ms = started;
+    }
     freeDashboard(&dashboard);
-    fprintf(stderr, "timing=render status=framebuffer ms=%lld\n", monotonicMs() - started);
+    fprintf(stderr, "timing=render status=drawn mode=%d ms=%lld\n", static_cast<int>(mode), monotonicMs() - started);
     return;
   }
+  g_last_drawn_signature[0] = '\0';
   if (save_pgm && save_pgm[0]) {
     dumpBitmapPreview(&dashboard, status, save_pgm, kBitmapFallbackWidth, kBitmapFallbackHeight);
     fprintf(stderr, "render=save-pgm %s width=%d height=%d fallback=1\n", save_pgm, kBitmapFallbackWidth, kBitmapFallbackHeight);
@@ -2715,13 +2743,14 @@ void renderPayload(const char* payload, const char* status, const char* dump_pgm
   fprintf(stderr, "timing=render status=eips ms=%lld\n", monotonicMs() - started);
 }
 
-int renderCachedPayload(const Options* options, const char* status) {
+int renderCachedPayload(const Options* options, const char* status, RenderMode mode = kRenderForce) {
+  g_last_render_skipped = 0;
   char* payload = readFile(options->cache);
   if (!payload) {
     fprintf(stderr, "render=cache-miss path=%s\n", options->cache);
     return 0;
   }
-  renderPayload(payload, status, options->dump_pgm, options->save_pgm, options->dump_width, options->dump_height);
+  renderPayload(payload, status, options->dump_pgm, options->save_pgm, options->dump_width, options->dump_height, mode);
   free(payload);
   return 1;
 }
@@ -2735,7 +2764,7 @@ int waitForWakeEvent(const Options* options, int seconds, int allow_repaint) {
     if (g_pending_action != kTouchNone) {
       const int touch_result = handlePendingTouch(options);
       if (!g_running) return 0;
-      if (touch_result == 1) renderCachedPayload(options, "cached/local");
+      if (touch_result == 1) renderCachedPayload(options, g_last_fetch_status);
       continue;
     }
     if (g_event_refresh) {
@@ -2744,7 +2773,9 @@ int waitForWakeEvent(const Options* options, int seconds, int allow_repaint) {
     }
     if (allow_repaint && shouldRepaintCachedTick(elapsed)) {
       fprintf(stderr, "render=repaint tick=%d\n", elapsed);
-      renderCachedPayload(options, "cached/local");
+      // After a fetch draw this is the same data and status, so it may keep the signature.
+      // After a touch draw the signature is already cleared and must stay that way.
+      renderCachedPayload(options, g_last_fetch_status, g_last_drawn_signature[0] ? kRenderRecord : kRenderForce);
     }
     sleep(1);
   }
@@ -2878,7 +2909,7 @@ int main(int argc, char** argv) {
     int pending_result = 0;
     if (g_pending_action != kTouchNone) pending_result = handlePendingTouch(&options);
     if (!g_running) break;
-    if (pending_result == 1 && renderCachedPayload(&options, "cached/local")) {
+    if (pending_result == 1 && renderCachedPayload(&options, g_last_fetch_status)) {
       g_event_refresh = 0;
       if (options.once) break;
       for (int remaining = options.interval; remaining > 0 && g_running;) {
@@ -2922,7 +2953,8 @@ int main(int argc, char** argv) {
     char dashboard_url[320];
     buildDashboardUrl(options.url, dashboard_url, sizeof(dashboard_url));
     const int fetched = fetchToCache(dashboard_url, options.read_token, options.cache);
-    if (!renderCachedPayload(&options, fetched ? "live" : "cached/offline")) {
+    copyText(g_last_fetch_status, sizeof(g_last_fetch_status), fetched ? "live" : "cached/offline");
+    if (!renderCachedPayload(&options, g_last_fetch_status, kRenderIfChanged)) {
       char lines[kMaxRows][96];
       int count = 0;
       addRule(lines, &count);
@@ -2934,10 +2966,11 @@ int main(int argc, char** argv) {
     }
 
     if (options.once) break;
+    const int drew = !g_last_render_skipped;
     for (int remaining = options.interval; remaining > 0 && g_running;) {
       if (inSleepWindow(options.sleep_start_minute, options.sleep_end_minute)) break;
       const int chunk = remaining > 60 ? 60 : remaining;
-      waitForWakeEvent(&options, chunk, remaining == options.interval);
+      waitForWakeEvent(&options, chunk, drew && remaining == options.interval);
       if (g_event_refresh) break;
       remaining -= chunk;
     }

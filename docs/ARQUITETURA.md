@@ -761,11 +761,26 @@ if (strncmp(line_buffer, "event: planner", 14) == 0) {
 
 ## Redesenho
 
-O Kindle trata o evento SSE como um sinal de atualização. Ele:
+A cada `INTERVAL`, ou quando chega um evento SSE, o Kindle:
 
 1. busca o JSON mais recente;
 2. salva no cache offline;
-3. redesenha o painel.
+3. redesenha o painel, **se algo mudou**.
+
+Redesenhar um e-ink custa bateria e faz a tela piscar, então o programa
+guarda uma "assinatura" do que está na tela: a versão dos dados, a linha de
+data e status do cabeçalho, a lista aberta, o bloqueio e o tema. Se a busca
+nova gerar a mesma assinatura, o desenho é pulado (`render=skip unchanged` no
+log). Há três salvaguardas:
+
+- **Toques:** um redesenho por toque sempre desenha e apaga a assinatura,
+  então a busca seguinte sempre redesenha. Isso corrige a tela se o servidor
+  não aceitar uma marcação feita no Kindle.
+- **Redesenho periódico:** a cada 30 minutos (`kForcedRedrawMs`) a tela é
+  redesenhada mesmo sem mudanças, para limpar avisos do próprio Kindle que
+  tenham ficado por cima do painel.
+- **Repintura:** a repintura de 5 segundos após uma atualização só acontece
+  quando houve desenho de verdade.
 
 Se a rede falhar, o painel continua sendo desenhado a partir do cache. E,
 como o backend nunca derruba a requisição inteira só porque o clima ou a
